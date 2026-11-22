@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireStrongAdmin } from "@/lib/auth";
 import { createCaseReference, createStableSlug, parseVideoLinks } from "@/lib/encounters";
 import { prepareImages } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
@@ -52,8 +52,8 @@ export async function updateEncounter(formData: FormData) {
 }
 
 export async function moderateEncounter(formData: FormData) {
-  const { administrator } = await requireAdmin();
   const id = z.string().uuid().parse(formData.get("id"));
+  const { administrator } = await requireStrongAdmin(`/admin/encounters/${id}`);
   const intent = z.enum(["publish", "reject", "needs-info", "unpublish", "restore-draft"]).parse(formData.get("intent"));
   const reason = z.string().trim().max(1000).optional().parse(formData.get("reason") || undefined);
   const existing = await prisma.encounter.findUniqueOrThrow({ where: { id }, select: { status: true } });
@@ -77,7 +77,7 @@ export async function moderateEncounter(formData: FormData) {
 }
 
 export async function createFounderFile(formData: FormData) {
-  const { administrator } = await requireAdmin();
+  const { administrator } = await requireStrongAdmin("/admin/new");
   const data = z.object({
     title: z.string().trim().min(5).max(140),
     categoryId: z.string().uuid(),
@@ -103,8 +103,8 @@ export async function createFounderFile(formData: FormData) {
 }
 
 export async function uploadAdminMedia(formData: FormData) {
-  const { administrator } = await requireAdmin();
   const encounterId = z.string().uuid().parse(formData.get("id"));
+  const { administrator } = await requireStrongAdmin(`/admin/encounters/${encounterId}`);
   const files = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
   const prepared = await prepareImages(files);
   for (const image of prepared) {
@@ -116,9 +116,9 @@ export async function uploadAdminMedia(formData: FormData) {
 }
 
 export async function removeMedia(formData: FormData) {
-  const { administrator } = await requireAdmin();
   const mediaId = z.string().uuid().parse(formData.get("mediaId"));
   const media = await prisma.encounterMedia.findUniqueOrThrow({ where: { id: mediaId } });
+  const { administrator } = await requireStrongAdmin(`/admin/encounters/${media.encounterId}`);
   await privateStorage.delete(media.storageKey);
   await prisma.$transaction([
     prisma.encounterMedia.update({ where: { id: mediaId }, data: { removedAt: new Date(), approvedAt: null, approvedByAdminId: null } }),
@@ -128,8 +128,8 @@ export async function removeMedia(formData: FormData) {
 }
 
 export async function deleteEncounter(formData: FormData) {
-  const { administrator } = await requireAdmin();
   const id = z.string().uuid().parse(formData.get("id"));
+  const { administrator } = await requireStrongAdmin(`/admin/encounters/${id}`);
   const existing = await prisma.encounter.findUniqueOrThrow({ where: { id }, include: { media: true } });
   await Promise.all(existing.media.map((item) => privateStorage.delete(item.storageKey).catch(() => undefined)));
   await prisma.$transaction([

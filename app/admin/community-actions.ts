@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireStrongAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const reason = z.string().trim().max(1000).optional();
@@ -17,7 +17,7 @@ export async function removeCommunityPost(formData: FormData) {
   revalidatePath("/admin/community");
 }
 export async function moderateMember(formData: FormData) {
-  const { administrator } = await requireAdmin(); const id = z.string().uuid().parse(formData.get("id")); const intent = z.enum(["suspend", "reinstate"]).parse(formData.get("intent")); const note = reason.parse(formData.get("reason") || undefined);
+  const id = z.string().uuid().parse(formData.get("id")); const { administrator } = await requireStrongAdmin("/admin/community"); const intent = z.enum(["suspend", "reinstate"]).parse(formData.get("intent")); const note = reason.parse(formData.get("reason") || undefined);
   const profile = await prisma.memberProfile.update({ where: { id }, data: intent === "suspend" ? { suspendedAt: new Date(), suspensionReason: note ?? "Community guidelines review" } : { suspendedAt: null, suspensionReason: null } });
   if (intent === "suspend") await prisma.session.deleteMany({ where: { userId: profile.userId } });
   await prisma.communityModeration.create({ data: { administratorId: administrator.id, action: intent === "suspend" ? "MEMBER_SUSPENDED" : "MEMBER_REINSTATED", targetType: "MEMBER", targetId: id, reason: note } }); revalidatePath("/admin/community");

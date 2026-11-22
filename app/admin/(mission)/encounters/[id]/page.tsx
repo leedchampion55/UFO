@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { moderateEncounter, removeMedia, updateEncounter, uploadAdminMedia } from "@/app/admin/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { prisma } from "@/lib/prisma";
+import { requireStrongAdmin } from "@/lib/auth";
 
 export default async function AdminEncounterPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await requireStrongAdmin(`/admin/encounters/${id}`);
   const [encounter, categories] = await Promise.all([
     prisma.encounter.findUnique({ where: { id }, include: { category: true, contact: true, media: { where: { removedAt: null }, orderBy: { uploadedAt: "asc" } }, moderationHistory: { include: { administrator: true }, orderBy: { createdAt: "desc" } } } }),
     prisma.category.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),

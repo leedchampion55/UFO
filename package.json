@@ -17,6 +17,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "admin:create": "tsx scripts/create-admin.ts",
+    "security:cleanup-rate-limits": "tsx --env-file=.env scripts/cleanup-rate-limits.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

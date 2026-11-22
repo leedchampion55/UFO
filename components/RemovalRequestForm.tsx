@@ -11,7 +11,7 @@ export function RemovalRequestForm() {
     const form = new FormData(event.currentTarget);
     const response = await fetch("/api/removal-requests", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-ufo-request": "same-origin" },
       body: JSON.stringify(Object.fromEntries(form.entries())),
     });
     const result = await response.json() as { error?: string; message?: string };

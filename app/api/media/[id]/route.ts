@@ -1,4 +1,4 @@
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession, STRONG_AUTH_WINDOW_MS } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { privateStorage } from "@/lib/storage";
 
@@ -11,6 +11,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const admin = await getAdminSession(request.headers);
   const isPublic = media.encounter.status === "PUBLISHED" && !media.encounter.deletedAt && Boolean(media.approvedAt);
   if (!admin && !isPublic) return new Response("Not found", { status: 404 });
+  if (!isPublic && (!admin?.mfaEnabled || !admin.strongAuthAt || Date.now() - admin.strongAuthAt.getTime() > STRONG_AUTH_WINDOW_MS)) {
+    return new Response("Fresh administrator authentication required", { status: 403 });
+  }
   try {
     const bytes = await privateStorage.get(media.storageKey);
     return new Response(new Uint8Array(bytes), {

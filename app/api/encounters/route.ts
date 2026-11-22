@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertSameOrigin, enforceRateLimit, safeErrorResponse } from "@/lib/security";
 import { createCaseReference, createStableSlug, parseVideoLinks, submissionSchema } from "@/lib/encounters";
-import { prepareImages, uploadErrorMessage } from "@/lib/media";
+import { assertUploadRequestSize, prepareImages, uploadErrorMessage } from "@/lib/media";
 import { privateStorage } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -14,6 +14,7 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     await enforceRateLimit(request, "public-submission", 4, 60 * 60);
+    assertUploadRequestSize(request);
     const formData = await request.formData();
     const parsed = submissionSchema.safeParse(Object.fromEntries(formData.entries()));
     if (!parsed.success) {
@@ -30,7 +31,10 @@ export async function POST(request: Request) {
     const files = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
     let prepared;
     try { prepared = await prepareImages(files); }
-    catch (error) { return NextResponse.json({ error: uploadErrorMessage(error) ?? "A photograph could not be processed safely." }, { status: 400 }); }
+    catch (error) {
+      await enforceRateLimit(request, "invalid-public-upload", 8, 60 * 60);
+      return NextResponse.json({ error: uploadErrorMessage(error) ?? "A photograph could not be processed safely." }, { status: error instanceof Error && error.message === "UPLOAD_BUSY" ? 503 : 400 });
+    }
 
     const removalToken = randomBytes(24).toString("hex");
     const encounter = await prisma.encounter.create({

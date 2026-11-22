@@ -7,6 +7,7 @@ import { getMemberSession, requireVerifiedMember } from "@/lib/auth";
 import { createStableSlug } from "@/lib/encounters";
 import { prisma } from "@/lib/prisma";
 import { enforceRateLimit } from "@/lib/security";
+import { appendInternalQuery } from "@/lib/redirects";
 
 const content = z.string().trim().min(3).max(5000);
 
@@ -25,13 +26,13 @@ export async function createEncounterComment(formData: FormData) {
 }
 
 export async function editEncounterComment(formData: FormData) {
-  const { profile } = await requireVerifiedMember(); const id = z.string().uuid().parse(formData.get("id")); const body = content.parse(formData.get("body"));
+  const { profile } = await requireVerifiedMember(); await rateLimit("encounter-comment-edit", 30, 60 * 60); const id = z.string().uuid().parse(formData.get("id")); const body = content.parse(formData.get("body"));
   const comment = await prisma.encounterComment.findFirstOrThrow({ where: { id, authorId: profile.id, deletedAt: null }, include: { encounter: { select: { slug: true } } } });
   await prisma.encounterComment.update({ where: { id }, data: { body, editedAt: new Date() } }); revalidatePath(`/encounters/${comment.encounter.slug}`);
 }
 
 export async function deleteEncounterComment(formData: FormData) {
-  const { profile } = await requireVerifiedMember(); const id = z.string().uuid().parse(formData.get("id"));
+  const { profile } = await requireVerifiedMember(); await rateLimit("encounter-comment-delete", 20, 60 * 60); const id = z.string().uuid().parse(formData.get("id"));
   const comment = await prisma.encounterComment.findFirstOrThrow({ where: { id, authorId: profile.id, deletedAt: null }, include: { encounter: { select: { slug: true } } } });
   await prisma.encounterComment.update({ where: { id }, data: { deletedAt: new Date(), body: "" } }); revalidatePath(`/encounters/${comment.encounter.slug}`);
 }
@@ -53,21 +54,21 @@ export async function createDiscussionReply(formData: FormData) {
 }
 
 export async function editDiscussionReply(formData: FormData) {
-  const { profile } = await requireVerifiedMember(); const id = z.string().uuid().parse(formData.get("id")); const body = content.parse(formData.get("body"));
+  const { profile } = await requireVerifiedMember(); await rateLimit("discussion-reply-edit", 30, 60 * 60); const id = z.string().uuid().parse(formData.get("id")); const body = content.parse(formData.get("body"));
   const reply = await prisma.discussionReply.findFirstOrThrow({ where: { id, authorId: profile.id, deletedAt: null }, include: { discussion: { select: { slug: true } } } });
   await prisma.discussionReply.update({ where: { id }, data: { body, editedAt: new Date() } }); revalidatePath(`/mothership/${reply.discussion.slug}`);
 }
 
 export async function deleteDiscussionReply(formData: FormData) {
-  const { profile } = await requireVerifiedMember(); const id = z.string().uuid().parse(formData.get("id"));
+  const { profile } = await requireVerifiedMember(); await rateLimit("discussion-reply-delete", 20, 60 * 60); const id = z.string().uuid().parse(formData.get("id"));
   const reply = await prisma.discussionReply.findFirstOrThrow({ where: { id, authorId: profile.id, deletedAt: null }, include: { discussion: { select: { slug: true } } } });
   await prisma.discussionReply.update({ where: { id }, data: { deletedAt: new Date(), body: "" } }); revalidatePath(`/mothership/${reply.discussion.slug}`);
 }
 
 export async function reportContent(formData: FormData) {
   const member = await getMemberSession(); await rateLimit("community-report", 8, 60 * 60);
-  const data = z.object({ targetType: z.enum(["DISCUSSION", "DISCUSSION_REPLY", "ENCOUNTER_COMMENT"]), targetId: z.string().uuid(), reason: z.enum(["SPAM", "HARASSMENT", "PERSONAL_INFORMATION", "INAPPROPRIATE_CONTENT", "MISLEADING_OR_IMPERSONATION", "OTHER"]), details: z.string().trim().max(500).optional(), returnTo: z.string().startsWith("/") }).parse(Object.fromEntries(formData.entries()));
+  const data = z.object({ targetType: z.enum(["DISCUSSION", "DISCUSSION_REPLY", "ENCOUNTER_COMMENT"]), targetId: z.string().uuid(), reason: z.enum(["SPAM", "HARASSMENT", "PERSONAL_INFORMATION", "INAPPROPRIATE_CONTENT", "MISLEADING_OR_IMPERSONATION", "OTHER"]), details: z.string().trim().max(500).optional(), returnTo: z.string() }).parse(Object.fromEntries(formData.entries()));
   const target = data.targetType === "DISCUSSION" ? { discussionId: data.targetId } : data.targetType === "DISCUSSION_REPLY" ? { discussionReplyId: data.targetId } : { encounterCommentId: data.targetId };
   await prisma.communityReport.create({ data: { reporterId: member?.profile.id, reason: data.reason, details: data.details || null, ...target } });
-  redirect(`${data.returnTo}${data.returnTo.includes("?") ? "&" : "?"}reported=true`);
+  redirect(appendInternalQuery(data.returnTo, "reported", "true", "/report"));
 }

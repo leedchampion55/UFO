@@ -13,7 +13,7 @@ export function ReportForm({ categories }: { categories: Category[] }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setPending(true); setError("");
     try {
-      const response = await fetch("/api/encounters", { method: "POST", body: new FormData(event.currentTarget) });
+      const response = await fetch("/api/encounters", { method: "POST", headers: { "x-ufo-request": "same-origin" }, body: new FormData(event.currentTarget) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "The transmission failed.");
       setSuccess(result); event.currentTarget.reset(); window.scrollTo({ top: 0, behavior: "smooth" });

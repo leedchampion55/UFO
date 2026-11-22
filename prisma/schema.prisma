@@ -219,6 +219,7 @@ model User {
   emailVerified Boolean         @default(false)
   image         String?
   role          String?         @default("member")
+  twoFactorEnabled Boolean      @default(false)
   banned        Boolean?        @default(false)
   banReason     String?
   banExpires    DateTime?
@@ -226,6 +227,7 @@ model User {
   updatedAt     DateTime        @updatedAt
   sessions      Session[]
   accounts      Account[]
+  twoFactors    TwoFactor[]
   administrator Administrator?
   memberProfile MemberProfile?
 
@@ -377,11 +379,27 @@ model Session {
   ipAddress      String?
   userAgent      String?
   impersonatedBy String?
+  strongAuthAt   DateTime?
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("session")
+}
+
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  verified                Boolean   @default(false)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+  @@map("twoFactor")
 }
 
 model Account {

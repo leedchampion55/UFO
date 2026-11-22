@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { registerMemberAccount } from "@/lib/member-registration";
 import { assertSameOrigin, enforceRateLimit, safeErrorResponse } from "@/lib/security";
 
 const schema = z.object({
@@ -19,15 +19,12 @@ export async function POST(request: Request) {
     const canonical = parsed.data.username.toLowerCase();
     if (await prisma.memberProfile.findUnique({ where: { usernameCanonical: canonical } })) return Response.json({ error: "That username is not available." }, { status: 409 });
 
-    const result = await auth.api.signUpEmail({
-      body: { email: parsed.data.email, password: parsed.data.password, name: parsed.data.username, callbackURL: "/account/verified" },
-      headers: request.headers,
-    });
-    await prisma.memberProfile.create({ data: { userId: result.user.id, username: parsed.data.username, usernameCanonical: canonical } });
+    await registerMemberAccount({ email: parsed.data.email, username: parsed.data.username, password: parsed.data.password }, request.headers);
     return Response.json({ ok: true, message: "Account created. Check your verification message before signing in." }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("already exists") || message.includes("USER_ALREADY_EXISTS")) return Response.json({ ok: true, message: "If that address can register, a verification message has been created." }, { status: 201 });
+    if (message.includes("Unique constraint") || message.includes("P2002")) return Response.json({ error: "That username is not available." }, { status: 409 });
     return safeErrorResponse(error);
   }
 }

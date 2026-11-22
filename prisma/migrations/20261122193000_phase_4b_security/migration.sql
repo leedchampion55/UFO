@@ -1,0 +1,19 @@
+-- Better Auth TOTP support. Secrets and backup-code sets are encrypted by
+-- Better Auth using the configured application secret before being stored.
+ALTER TABLE "user" ADD COLUMN "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "session" ADD COLUMN "strongAuthAt" TIMESTAMP(3);
+
+CREATE TABLE "twoFactor" (
+    "id" TEXT NOT NULL,
+    "secret" TEXT NOT NULL,
+    "backupCodes" TEXT NOT NULL,
+    "verified" BOOLEAN NOT NULL DEFAULT false,
+    "failedVerificationCount" INTEGER NOT NULL DEFAULT 0,
+    "lockedUntil" TIMESTAMP(3),
+    "userId" TEXT NOT NULL,
+    CONSTRAINT "twoFactor_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "twoFactor_secret_idx" ON "twoFactor"("secret");
+CREATE INDEX "twoFactor_userId_idx" ON "twoFactor"("userId");
+ALTER TABLE "twoFactor" ADD CONSTRAINT "twoFactor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;

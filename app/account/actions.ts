@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { auth, getMemberSession, requireVerifiedMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforceRateLimit } from "@/lib/security";
 
 export async function updateProfile(formData: FormData) {
   const { profile } = await requireVerifiedMember();
@@ -16,7 +17,9 @@ export async function updateProfile(formData: FormData) {
 export async function resendVerification() {
   const member = await getMemberSession();
   if (!member || member.verified) return;
-  await auth.api.sendVerificationEmail({ body: { email: member.session.user.email, callbackURL: "/account/verified" }, headers: await headers() });
+  const requestHeaders = await headers();
+  await enforceRateLimit(new Request(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000", { headers: requestHeaders }), "account-email", 5, 60 * 60);
+  await auth.api.sendVerificationEmail({ body: { email: member.session.user.email, callbackURL: "/account/verified" }, headers: requestHeaders });
   redirect("/account?verification=sent");
 }
 
@@ -24,6 +27,7 @@ export async function deleteMemberAccount(formData: FormData) {
   const member = await getMemberSession();
   if (!member) redirect("/sign-in");
   if (formData.get("confirmation") !== member.profile.username) redirect("/account?deletion=confirm");
-  await prisma.user.delete({ where: { id: member.session.user.id } });
+  const password = z.string().min(12).max(128).parse(formData.get("password"));
+  await auth.api.deleteUser({ body: { password }, headers: await headers() });
   redirect("/?account=deleted");
 }

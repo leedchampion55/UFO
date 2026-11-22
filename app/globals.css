@@ -589,3 +589,15 @@ h3 { font-size: clamp(1.65rem, 2.5vw, 2.25rem); }
   .hero-intro { margin-top: 0; padding-top: 2.5rem; }
   .unknown-tile { min-height: 340px; }
 }
+
+/* Administrator MFA */
+.mfa-card { width: min(760px, calc(100% - 2rem)); }
+.mfa-setup-details { display: grid; gap: 1rem; }
+.mfa-setup-details h2 { margin: 1rem 0 0; font-size: 1.75rem; }
+.mfa-secret { display: block; overflow-wrap: anywhere; padding: .9rem; border: 1px solid var(--line); background: var(--midnight-deep); color: var(--green); }
+.recovery-code-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: 0; padding: 0; list-style: none; }
+.recovery-code-list code { display: block; padding: .55rem; border: 1px solid var(--line); background: var(--midnight-deep); color: var(--cream); text-align: center; }
+.mfa-methods { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: 1rem; }
+.mfa-methods button { padding: .65rem; border: 1px solid var(--line); background: transparent; color: var(--mist); cursor: pointer; }
+.mfa-methods button.active { border-color: var(--green); background: rgba(164,255,69,.1); color: var(--green); }
+@media (max-width: 520px) { .recovery-code-list { grid-template-columns: 1fr; } }
