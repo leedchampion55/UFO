@@ -17,7 +17,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       headers: {
         "Content-Type": media.mimeType,
         "Content-Length": String(bytes.byteLength),
-        "Cache-Control": isPublic ? "public, max-age=3600" : "private, no-store",
+        // Publication and media approval can be revoked at any time. Never let a
+        // browser or intermediary retain a copy beyond the current access check.
+        "Cache-Control": "private, no-store, max-age=0",
+        "Vary": "Cookie",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "X-Content-Type-Options": "nosniff",
       },

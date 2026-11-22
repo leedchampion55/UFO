@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import sharp from "sharp";
 import { POST as submitEncounter } from "@/app/api/encounters/route";
+import { GET as getMedia } from "@/app/api/media/[id]/route";
 import { POST as requestRemoval } from "@/app/api/removal-requests/route";
 import { auth, getAdminSession } from "@/lib/auth";
 import { createCaseReference, createStableSlug, parseVideoLinks, submissionSchema } from "@/lib/encounters";
 import { prepareImages } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
+import { privateStorage } from "@/lib/storage";
 
 const marker = "[phase2-test]";
 let categoryId = "";
 let encounterId = "";
 let caseReference = "";
 let removalToken = "";
+let mediaId = "";
 let administratorId = "";
 let administratorUserId = "";
 const administratorEmail = `phase2-${crypto.randomUUID()}@example.test`;
@@ -57,6 +60,8 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
   });
 
   after(async () => {
+    const media = await prisma.encounterMedia.findMany({ where: { encounter: { title: { startsWith: marker } } }, select: { storageKey: true } });
+    await Promise.all(media.map((item) => privateStorage.delete(item.storageKey)));
     await prisma.encounter.deleteMany({ where: { title: { startsWith: marker } } });
     await prisma.user.deleteMany({ where: { id: administratorUserId } });
     await prisma.$disconnect();
@@ -101,7 +106,10 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
   });
 
   it("persists a valid anonymous public submission as pending", async () => {
-    const response = await submitEncounter(requestWith(validForm()));
+    const form = validForm();
+    const image = await sharp({ create: { width: 32, height: 32, channels: 3, background: "#a4ff45" } }).webp().toBuffer();
+    form.set("photos", new File([image], "phase2-test.webp", { type: "image/webp" }));
+    const response = await submitEncounter(requestWith(form));
     const result = await response.json() as { caseReference: string; removalToken: string };
     assert.equal(response.status, 201);
     caseReference = result.caseReference;
@@ -109,6 +117,7 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
     const saved = await prisma.encounter.findUniqueOrThrow({ where: { caseReference } });
     encounterId = saved.id;
     assert.equal(saved.status, "PENDING");
+    mediaId = (await prisma.encounterMedia.findFirstOrThrow({ where: { encounterId } })).id;
   });
 
   it("keeps contributor contact data in the private contact relation", async () => {
@@ -124,6 +133,11 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
 
   it("does not include pending reports in public archive queries", async () => {
     assert.equal(await prisma.encounter.count({ where: { id: encounterId, status: "PUBLISHED" } }), 0);
+  });
+
+  it("blocks pending media from unauthenticated requests", async () => {
+    const response = await getMedia(new Request(`http://localhost:3000/api/media/${mediaId}`), { params: Promise.resolve({ id: mediaId }) });
+    assert.equal(response.status, 404);
   });
 
   it("does not accept an invalid contributor recovery token", async () => {
@@ -143,9 +157,13 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
     await prisma.$transaction([
       prisma.encounter.update({ where: { id: encounterId }, data: { status: "PUBLISHED", publishedAt: new Date() } }),
       prisma.encounterModeration.create({ data: { encounterId, administratorId, action: "PUBLISHED", previousStatus: "PENDING", updatedStatus: "PUBLISHED" } }),
+      prisma.encounterMedia.updateMany({ where: { encounterId, removedAt: null }, data: { approvedAt: new Date(), approvedByAdminId: administratorId } }),
     ]);
     const publicRecord = await prisma.encounter.findFirst({ where: { id: encounterId, status: "PUBLISHED" }, select: { id: true, title: true, contact: false } });
     assert.equal(publicRecord?.id, encounterId);
+    const mediaResponse = await getMedia(new Request(`http://localhost:3000/api/media/${mediaId}`), { params: Promise.resolve({ id: mediaId }) });
+    assert.equal(mediaResponse.status, 200);
+    assert.equal(mediaResponse.headers.get("cache-control"), "private, no-store, max-age=0");
   });
 
   it("resolves an approved encounter by its stable public slug", async () => {
@@ -165,6 +183,8 @@ describe("Phase 2 encounter system", { concurrency: false }, () => {
       prisma.encounterModeration.create({ data: { encounterId, administratorId, action: "UNPUBLISHED", previousStatus: "PUBLISHED", updatedStatus: "UNPUBLISHED" } }),
     ]);
     assert.equal(await prisma.encounter.count({ where: { id: encounterId, status: "PUBLISHED" } }), 0);
+    const mediaResponse = await getMedia(new Request(`http://localhost:3000/api/media/${mediaId}`), { params: Promise.resolve({ id: mediaId }) });
+    assert.equal(mediaResponse.status, 404);
     await prisma.encounter.update({ where: { id: encounterId }, data: { status: "PUBLISHED", publishedAt: new Date() } });
   });
 
