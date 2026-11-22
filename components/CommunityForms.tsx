@@ -1,0 +1,19 @@
+import Link from "next/link";
+import { createDiscussionReply, createEncounterComment, deleteDiscussionReply, deleteEncounterComment, editDiscussionReply, editEncounterComment, reportContent } from "@/app/community/actions";
+
+export type PostingState = { signedIn: boolean; verified: boolean; suspended: boolean; ownProfileId?: string };
+
+export function PostingPrompt({ state, children }: { state: PostingState; children: React.ReactNode }) {
+  if (!state.signedIn) return <div className="reply-preview"><h2>Join the conversation</h2><p>Create a free account or sign in to participate.</p><div><Link className="button" href="/register">Join The Mothership</Link><Link className="text-link" href="/sign-in">Sign in</Link></div></div>;
+  if (!state.verified) return <div className="reply-preview"><h2>Verification required</h2><p>Verify your email before posting.</p><Link className="button" href="/account">Open account settings</Link></div>;
+  if (state.suspended) return <div className="reply-preview"><h2>Posting suspended</h2><p>Your account can read public conversations but cannot post.</p></div>;
+  return <>{children}</>;
+}
+
+export function EncounterCommentForm({ encounterId, parentId }: { encounterId: string; parentId?: string }) { return <form className="community-compose" action={createEncounterComment}><input type="hidden" name="encounterId" value={encounterId} />{parentId && <input type="hidden" name="parentId" value={parentId} />}<input className="honeypot" name="website" tabIndex={-1} /><label htmlFor={`comment-${parentId ?? "new"}`}>{parentId ? "Reply" : "Add a comment"}</label><textarea id={`comment-${parentId ?? "new"}`} name="body" required minLength={3} maxLength={5000} rows={parentId ? 3 : 5} /><button className="button button-small">Post {parentId ? "reply" : "comment"}</button></form>; }
+
+export function DiscussionReplyForm({ discussionId }: { discussionId: string }) { return <form className="community-compose" action={createDiscussionReply}><input type="hidden" name="discussionId" value={discussionId} /><input className="honeypot" name="website" tabIndex={-1} /><label htmlFor="discussion-reply">Reply to this discussion</label><textarea id="discussion-reply" name="body" required minLength={3} maxLength={5000} rows={5} /><button className="button">Post reply</button></form>; }
+
+export function OwnerControls({ type, id, body }: { type: "comment" | "reply"; id: string; body: string }) { const edit = type === "comment" ? editEncounterComment : editDiscussionReply; const remove = type === "comment" ? deleteEncounterComment : deleteDiscussionReply; return <details className="owner-controls"><summary>Edit or delete</summary><form action={edit}><input type="hidden" name="id" value={id} /><textarea name="body" defaultValue={body} required minLength={3} maxLength={5000} /><button>Save edit</button></form><form action={remove}><input type="hidden" name="id" value={id} /><button>Delete</button></form></details>; }
+
+export function ReportForm({ targetType, targetId, returnTo }: { targetType: "DISCUSSION" | "DISCUSSION_REPLY" | "ENCOUNTER_COMMENT"; targetId: string; returnTo: string }) { return <details className="report-control"><summary>Report</summary><form action={reportContent}><input type="hidden" name="targetType" value={targetType} /><input type="hidden" name="targetId" value={targetId} /><input type="hidden" name="returnTo" value={returnTo} /><select name="reason" required><option value="SPAM">Spam</option><option value="HARASSMENT">Harassment</option><option value="PERSONAL_INFORMATION">Personal information</option><option value="INAPPROPRIATE_CONTENT">Inappropriate content</option><option value="MISLEADING_OR_IMPERSONATION">Misleading or impersonated material</option><option value="OTHER">Other</option></select><textarea name="details" maxLength={500} placeholder="Optional details" /><button>Send report</button></form></details>; }

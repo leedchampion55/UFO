@@ -16,4 +16,16 @@ for (const category of categories) {
   await prisma.category.upsert({ where: { slug: category.slug }, update: category, create: category });
 }
 
+const discussionCategories = [
+  { name: "UFOs & UAPs", slug: "ufos-uaps", description: "Sightings, skywatching and unidentified aerial phenomena.", icon: "◉", sortOrder: 1 },
+  { name: "Paranormal Experiences", slug: "paranormal-experiences", description: "Hauntings, presences and experiences beyond easy explanation.", icon: "✦", sortOrder: 2 },
+  { name: "Cornish Mysteries", slug: "cornish-mysteries", description: "Local folklore, strange history and mysteries rooted in Cornwall.", icon: "⌖", sortOrder: 3 },
+  { name: "Theories & Explanations", slug: "theories-explanations", description: "Thoughtful theories, ordinary explanations and open questions.", icon: "△", sortOrder: 4 },
+  { name: "General Discussion", slug: "general-discussion", description: "Introductions and wider curious conversation.", icon: "◇", sortOrder: 5 },
+];
+
+for (const category of discussionCategories) {
+  await prisma.discussionCategory.upsert({ where: { slug: category.slug }, update: category, create: category });
+}
+
 await prisma.$disconnect();

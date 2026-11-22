@@ -159,6 +159,60 @@ h3 { font-size: clamp(1.65rem, 2.5vw, 2.25rem); }
   .footer-bottom p + p { margin-top: .6rem; }
 }
 
+/* Phase 3: members and community */
+.member-register { color: var(--green); border: 0; background: transparent; font: 800 .75rem "Inter"; text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
+.member-auth-page { min-height: 75vh; display: grid; place-items: center; padding: clamp(4rem, 9vw, 8rem) 1rem; background: radial-gradient(circle at 50% 10%, rgba(164,255,69,.12), transparent 35%), var(--midnight); }
+.auth-panel { width: min(100%, 620px); padding: clamp(1.5rem, 5vw, 3.5rem); border: 1px solid var(--line); background: rgba(9,22,32,.96); box-shadow: 16px 16px 0 rgba(164,255,69,.08); }
+.auth-panel h1 { font-size: clamp(3rem, 8vw, 5.5rem); }
+.auth-panel > p { color: var(--mist); }
+.auth-form { display: grid; gap: 1rem; margin: 2rem 0 1rem; }
+.auth-form small { color: var(--mist); }
+.auth-success { text-align: center; }
+.auth-message, .community-alert { padding: .8rem 1rem; border: 1px solid rgba(164,255,69,.4); background: rgba(164,255,69,.08); color: var(--green); }
+.dev-mail article { display: grid; gap: .5rem; margin-top: 1rem; padding: 1rem; border-top: 1px solid var(--line); text-align: left; }
+.dev-mail article span { color: var(--mist); font-size: .8rem; }
+.account-hero { padding: clamp(4rem, 9vw, 8rem) 0; background: radial-gradient(circle at 20% 20%, rgba(164,255,69,.12), transparent 35%), var(--teal); }
+.account-hero h1 { font-size: clamp(3.5rem, 9vw, 7rem); }
+.account-grid { display: grid; grid-template-columns: 1.4fr .8fr; gap: 1.5rem; align-items: start; }
+.profile-card { padding: 2rem; background: var(--cream); color: var(--ink); }
+.profile-card dl { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-top: 2rem; }
+.profile-card dl div { padding-top: 1rem; border-top: 2px solid var(--ink); }
+.profile-card dt { font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.profile-card dd { margin: .4rem 0 0; font: 800 1.5rem "Barlow Condensed"; }
+.community-compose { display: grid; gap: .8rem; margin-top: 1.5rem; padding: 1.25rem; border: 1px solid var(--line); background: rgba(8,23,30,.75); }
+.community-compose label { color: var(--green); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.community-compose textarea, .owner-controls textarea, .report-control textarea, .report-control select { width: 100%; padding: .8rem; border: 1px solid rgba(176,192,201,.35); background: #07151c; color: var(--cream); }
+.encounter-comments { background: var(--teal); }
+.comment-list { display: grid; gap: 1rem; margin: 2rem 0; }
+.comment-card { display: grid; grid-template-columns: 120px 1fr; gap: 1rem; padding: 1.4rem; border: 1px solid var(--line); background: rgba(5,13,19,.7); }
+.comment-card aside, .thread-post aside { display: flex; flex-direction: column; gap: .35rem; align-items: flex-start; }
+.comment-card aside a, .thread-post aside a { color: var(--green); }
+.comment-replies { display: grid; gap: .7rem; margin-top: 1rem; padding-left: 1rem; border-left: 2px solid rgba(164,255,69,.35); }
+.comment-replies article { display: grid; grid-template-columns: 100px 1fr; gap: 1rem; padding: 1rem; background: rgba(17,49,57,.6); }
+.empty-inline { margin: 2rem 0; padding: 1.5rem; border: 1px dashed var(--line); color: var(--mist); }
+.owner-controls, .report-control { margin-top: .8rem; color: var(--mist); font-size: .8rem; }
+.owner-controls summary, .report-control summary { cursor: pointer; color: var(--green); }
+.owner-controls form, .report-control form { display: grid; gap: .5rem; margin-top: .7rem; }
+.report-control select { min-height: 2.5rem; }
+.section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; }
+.empty-state.compact { min-height: 240px; }
+.community-admin-tabs { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+.community-admin-tabs a { padding: .65rem 1rem; border: 1px solid var(--line); color: var(--cream); }
+.community-admin-list > article { display: grid; grid-template-columns: 1fr minmax(260px,.7fr); gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.community-admin-list article > div { display: grid; gap: .35rem; }
+.community-admin-list small, .community-admin-list span { color: var(--mist); }
+.community-admin-list form, .admin-search { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.community-admin-list input, .admin-search input { min-height: 2.5rem; padding: .55rem; border: 1px solid var(--line); background: var(--midnight); color: var(--cream); }
+.community-admin-list button, .admin-search button, .owner-controls button, .report-control button { padding: .55rem .75rem; border: 1px solid var(--line); background: transparent; color: var(--cream); cursor: pointer; }
+.admin-search { margin: 1rem 0; }
+
+@media (max-width: 800px) {
+  .account-grid { grid-template-columns: 1fr; }
+  .comment-card, .comment-replies article { grid-template-columns: 1fr; }
+  .community-admin-list > article { grid-template-columns: 1fr; }
+  .section-heading { align-items: start; flex-direction: column; }
+}
+
 /* Archive and case */
 .archive-section { background: linear-gradient(180deg, #0c222b, var(--midnight)); }
 .archive-controls { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem; padding: 1.4rem; background: rgba(5,13,19,.72); border: 1px solid var(--line); }

@@ -40,6 +40,42 @@ enum AdministratorRole {
   EDITOR
 }
 
+enum CommunityReportReason {
+  SPAM
+  HARASSMENT
+  PERSONAL_INFORMATION
+  INAPPROPRIATE_CONTENT
+  MISLEADING_OR_IMPERSONATION
+  OTHER
+}
+
+enum CommunityReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum CommunityTargetType {
+  DISCUSSION
+  DISCUSSION_REPLY
+  ENCOUNTER_COMMENT
+  MEMBER
+}
+
+enum CommunityModerationAction {
+  DISCUSSION_PINNED
+  DISCUSSION_UNPINNED
+  DISCUSSION_LOCKED
+  DISCUSSION_UNLOCKED
+  DISCUSSION_REMOVED
+  REPLY_REMOVED
+  COMMENT_REMOVED
+  MEMBER_SUSPENDED
+  MEMBER_REINSTATED
+  REPORT_RESOLVED
+  REPORT_DISMISSED
+}
+
 model Category {
   id          String      @id @default(uuid())
   name        String      @unique
@@ -88,6 +124,7 @@ model Encounter {
   media                 EncounterMedia[]
   contact               SubmissionContact?
   moderationHistory     EncounterModeration[]
+  comments              EncounterComment[]
 
   @@index([status, publishedAt])
   @@index([categoryId, status, publishedAt])
@@ -158,6 +195,8 @@ model Administrator {
   moderationActions  EncounterModeration[]
   createdEncounters  Encounter[]           @relation("CreatedEncounters")
   approvedMedia      EncounterMedia[]       @relation("ApprovedMedia")
+  communityActions   CommunityModeration[]
+  resolvedReports    CommunityReport[]      @relation("ResolvedReports")
 }
 
 model RequestRateLimit {
@@ -179,7 +218,7 @@ model User {
   email         String          @unique
   emailVerified Boolean         @default(false)
   image         String?
-  role          String?         @default("user")
+  role          String?         @default("member")
   banned        Boolean?        @default(false)
   banReason     String?
   banExpires    DateTime?
@@ -188,8 +227,145 @@ model User {
   sessions      Session[]
   accounts      Account[]
   administrator Administrator?
+  memberProfile MemberProfile?
 
   @@map("user")
+}
+
+model MemberProfile {
+  id               String                @id @default(uuid())
+  userId           String                @unique
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username         String                @unique
+  usernameCanonical String               @unique
+  displayName      String?
+  biography        String?
+  joinedAt         DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  suspendedAt      DateTime?
+  suspensionReason String?
+  discussions      Discussion[]
+  discussionReplies DiscussionReply[]
+  encounterComments EncounterComment[]
+  reports          CommunityReport[]     @relation("ReporterProfile")
+
+  @@index([suspendedAt])
+  @@index([joinedAt])
+}
+
+model DiscussionCategory {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  slug        String       @unique
+  description String?
+  icon        String       @default("✦")
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  discussions Discussion[]
+
+  @@index([active, sortOrder])
+}
+
+model Discussion {
+  id             String              @id @default(uuid())
+  slug           String              @unique
+  title          String
+  body           String
+  categoryId     String
+  category       DiscussionCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  authorId       String?
+  author         MemberProfile?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  pinned         Boolean             @default(false)
+  locked         Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  lastActivityAt DateTime            @default(now())
+  deletedAt      DateTime?
+  replies        DiscussionReply[]
+  reports        CommunityReport[]
+
+  @@index([categoryId, deletedAt, lastActivityAt])
+  @@index([pinned, deletedAt, lastActivityAt])
+  @@index([authorId, createdAt])
+}
+
+model DiscussionReply {
+  id           String            @id @default(uuid())
+  discussionId String
+  discussion   Discussion        @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  authorId     String?
+  author       MemberProfile?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body         String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  editedAt     DateTime?
+  deletedAt    DateTime?
+  reports      CommunityReport[]
+
+  @@index([discussionId, deletedAt, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model EncounterComment {
+  id          String              @id @default(uuid())
+  encounterId String
+  encounter   Encounter           @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  authorId    String?
+  author      MemberProfile?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parentId    String?
+  parent      EncounterComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     EncounterComment[]  @relation("CommentReplies")
+  body        String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  reports     CommunityReport[]
+
+  @@index([encounterId, parentId, deletedAt, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model CommunityReport {
+  id                  String                 @id @default(uuid())
+  reporterId          String?
+  reporter             MemberProfile?        @relation("ReporterProfile", fields: [reporterId], references: [id], onDelete: SetNull)
+  reason               CommunityReportReason
+  details              String?
+  status               CommunityReportStatus @default(PENDING)
+  discussionId         String?
+  discussion           Discussion?           @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  discussionReplyId    String?
+  discussionReply      DiscussionReply?       @relation(fields: [discussionReplyId], references: [id], onDelete: Cascade)
+  encounterCommentId   String?
+  encounterComment     EncounterComment?      @relation(fields: [encounterCommentId], references: [id], onDelete: Cascade)
+  createdAt            DateTime               @default(now())
+  resolvedAt           DateTime?
+  resolvedByAdminId    String?
+  resolvedByAdmin      Administrator?         @relation("ResolvedReports", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+  resolutionNote       String?
+
+  @@index([status, createdAt])
+  @@index([discussionId])
+  @@index([discussionReplyId])
+  @@index([encounterCommentId])
+}
+
+model CommunityModeration {
+  id               String                       @id @default(uuid())
+  administratorId  String
+  administrator    Administrator                @relation(fields: [administratorId], references: [id], onDelete: Restrict)
+  action           CommunityModerationAction
+  targetType       CommunityTargetType
+  targetId         String
+  reason           String?
+  metadata         Json?
+  createdAt        DateTime                     @default(now())
+
+  @@index([administratorId, createdAt])
+  @@index([targetType, targetId, createdAt])
 }
 
 model Session {

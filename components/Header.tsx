@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { BrandMark } from "./BrandMark";
+import { MemberNav } from "./MemberNav";
 
 const links = [
   ["/", "Home"],
@@ -40,7 +41,7 @@ export function Header() {
             ))}
           </div>
           <div className="nav-actions">
-            <button className="sign-in" type="button" aria-label="Sign in is coming in a later phase" title="Coming in a later phase">Sign in</button>
+            <MemberNav close={() => setOpen(false)} />
             <Link className="button button-small" href="/report" onClick={() => setOpen(false)}>Report an encounter</Link>
           </div>
         </nav>

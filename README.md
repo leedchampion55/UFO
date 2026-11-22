@@ -1,8 +1,8 @@
 # What the UFO?!
 
-A cinematic Cornish paranormal archive with anonymous public encounter submissions, a moderated publishing workflow and a private editorial Mission Control.
+A cinematic Cornish paranormal archive with moderated encounter publishing, free member accounts, encounter comments and The Mothership community forum.
 
-Phase 2 is a local-first application. It does **not** include deployment, member accounts, comments, notifications or automated email.
+Phase 3 is a local-first application. It is not deployed and does not configure a production email or object-storage provider.
 
 ## Requirements
 
@@ -20,24 +20,15 @@ npm run db:migrate
 npx prisma db seed
 ```
 
-`db:init` uses Homebrew PostgreSQL 16 at `/opt/homebrew/opt/postgresql@16` and creates a repository-local, ignored database cluster on port `55432`. If you prefer Docker, run `docker compose up -d db` instead, then apply the migration and seed commands above.
+`db:init` uses Homebrew PostgreSQL 16 at `/opt/homebrew/opt/postgresql@16` and creates an ignored, repository-local cluster on port `55432`. Alternatively, start the database with `docker compose up -d db`, then run the migration and seed commands. The seed creates the four encounter categories and five extensible Mothership categories.
 
-Generate a strong local authentication secret before creating an administrator:
+Generate unique local secrets and place them in `.env`:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Put that value in `BETTER_AUTH_SECRET` in `.env`. Replace the example `RATE_LIMIT_SECRET` as well. Then create the initial administrator from the command line only:
-
-```bash
-ADMIN_EMAIL="matt@example.com" \
-ADMIN_NAME="Matt" \
-ADMIN_PASSWORD="use-a-unique-password-of-at-least-12-characters" \
-npm run admin:create
-```
-
-The public application intentionally has no administrator registration route.
+Set both `BETTER_AUTH_SECRET` and `RATE_LIMIT_SECRET`. Never reuse the examples in production.
 
 ## Running the application
 
@@ -46,7 +37,7 @@ npm run db:start
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Mission Control is at [http://localhost:3000/admin](http://localhost:3000/admin).
+Open [http://localhost:3000](http://localhost:3000). The public community is at `/mothership`, registration is at `/register`, and Mission Control is at `/admin`.
 
 To stop the local database:
 
@@ -54,16 +45,74 @@ To stop the local database:
 npm run db:stop
 ```
 
-## Data and media
+## Member registration and local email
 
-- Prisma migrations live in `prisma/migrations` and seed the four editorial categories.
-- Public reports begin in `PENDING`; only `PUBLISHED` records appear in the archive, detail pages, homepage or Matt's Files.
-- Contributor contact information is stored separately from public encounter content.
-- Uploaded JPEG, PNG and WebP files are checked by file signature, constrained by size and pixel count, rotated, resized and re-encoded as WebP so embedded metadata is discarded.
-- Original uploads are never retained. Processed images live in the ignored `.data/private-media` directory and are served only through an access-controlled route.
-- Each submission receives a private recovery token for `/removal-request`. A verified removal unpublishes the encounter and erases contact details; anonymisation removes public attribution.
+Public registration accepts an email address, unique username and password of at least 12 characters. Public input cannot set a role; every public account is created as a `member`. Administrators remain CLI-only.
 
-The storage layer is intentionally abstracted. A production deployment should replace local disk storage with private object storage while retaining the access checks.
+1. Register at `/register`.
+2. Open the development mailbox at `/dev/mail` while `NODE_ENV` is not `production`.
+3. Open the captured verification link.
+4. Sign in at `/sign-in`.
+
+Development verification and password-recovery messages are written with restrictive permissions beneath ignored `.data/dev-mail`. This capture route returns 404 in production. Production delivery is deliberately not bypassed: `lib/dev-mail.ts` fails closed in production until a transactional email adapter is configured. Configure a reputable provider, verified sender, delivery monitoring and the correct `BETTER_AUTH_URL` before launch.
+
+Unverified accounts may sign in to inspect account status and resend verification, but server-side authorization prevents them from commenting or posting. Account settings at `/account` support display name, biography, verification resend and confirmed deletion. Public profiles never expose email addresses.
+
+## Community workflows
+
+- Anyone can read published discussions and encounter comments.
+- Only signed-in, verified, non-suspended members can create discussions, comment or reply.
+- Encounter comments support one reply level, editing/deletion by the author, reporting and pagination.
+- The Mothership supports configurable categories, search, filtering, newest/recent activity sorting, pagination, pinned/locked topics and dedicated topic URLs.
+- Reports accept a validated reason and optional details. Reports never remove content automatically.
+- Deleted accounts leave readable content attributed to “Deleted member”, avoiding broken discussions.
+
+Rate limits, same-origin checks, server-side validation, ownership checks and database-backed role/suspension checks protect all mutations. React renders member text as text rather than raw HTML.
+
+## Mission Control and administrators
+
+Create an administrator only from the command line:
+
+```bash
+ADMIN_EMAIL="matt@example.com" \
+ADMIN_NAME="Matt" \
+ADMIN_PASSWORD="use-a-unique-password-of-at-least-12-characters" \
+npm run admin:create
+```
+
+The public application has no administrator registration route. Existing encounter moderation remains under `/admin`. Community moderation is under `/admin/community`, where an administrator can:
+
+- inspect real member, discussion, report and suspension counts;
+- pin, unpin, lock, unlock or remove discussions;
+- remove replies and encounter comments;
+- resolve or dismiss reports;
+- find, suspend and reinstate members.
+
+Suspension invalidates existing sessions and every posting mutation rechecks suspension in the database. Moderator identity, action, target, timestamp and optional reason are retained in `CommunityModeration`.
+
+## Encounter privacy and media
+
+- Registration is never required to submit an encounter.
+- Public reports begin as `PENDING`; only `PUBLISHED` records appear publicly.
+- Contributor contact information is stored separately and is never returned by public projections.
+- JPEG, PNG and WebP uploads are signature-checked, size/pixel constrained, rotated, resized and re-encoded as WebP so metadata is discarded.
+- Originals are not retained. Processed images live in ignored `.data/private-media` and are served by an access-controlled route.
+- A private recovery token supports `/removal-request`; verified removal unpublishes the encounter, revokes public media access and erases contact details.
+
+Production should replace local media storage with private object storage while preserving authorization and revocation checks.
+
+## Database and migrations
+
+Prisma migrations live in `prisma/migrations`. Phase 3 adds member profiles, discussion categories/topics/replies, encounter comments, community reports, suspension state and moderation history. Foreign keys preserve existing Phase 2 data; migrations do not reset the database. A database constraint requires every report to target exactly one supported content record.
+
+Useful commands:
+
+```bash
+npm run db:status
+npm run db:generate
+npm run db:migrate
+npx prisma studio
+```
 
 ## Quality checks
 
@@ -72,31 +121,16 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
-npm audit
+npm audit --omit=dev
 ```
 
-The automated suite covers validation, safe image processing, pending submission persistence, private contact separation, public visibility, recovery-token verification, anonymisation, removal and audit history.
+The database-backed suite covers registration, verification, recovery, role safety, suspension, comment ownership/replies/moderation, forum publishing/search/filtering/locking/reporting, and all important Phase 2 privacy and publishing regressions.
 
-## Production checklist
+## Known limitations and production checklist
 
-Before any public launch:
+- Transactional email needs a production provider and credentials; local capture is development-only.
+- Rate limiting is database-backed and suitable for the current single application deployment. Reassess for a distributed/high-volume architecture.
+- Community posts are plain text with no images, private messages, realtime chat, voting or AI moderation by design.
+- Member avatars and multi-factor authentication are not included in this phase.
 
-- use a managed PostgreSQL database with encrypted backups and restricted credentials;
-- use unique authentication and rate-limit secrets, HTTPS, secure cookies and the correct production origins;
-- move private media to non-public object storage with encryption, retention rules and backups;
-- replace the single-node database rate limiter if traffic or architecture requires a distributed limiter;
-- add an operator email and transactional email provider for needs-information and moderation messages;
-- configure monitoring, error reporting, database/media backup restoration tests and audit-log retention;
-- complete privacy/terms legal review, define retention periods and document data-subject request handling;
-- review administrator roles, password recovery and preferably add multi-factor authentication;
-- run accessibility, security, load and cross-browser testing against a production-like environment;
-- do not commit `.env`, `.data`, database files or contributor uploads.
-
-## Useful database commands
-
-```bash
-npm run db:status
-npm run db:generate
-npm run db:migrate
-npx prisma studio
-```
+Before launch, use managed PostgreSQL with encrypted backups, private object storage, HTTPS and secure cookies; configure correct origins, email delivery, monitoring, error reporting, audit retention and restoration tests; complete privacy/terms and accessibility/security review; review administrator MFA and recovery; and never commit `.env`, `.data`, database files or uploads.

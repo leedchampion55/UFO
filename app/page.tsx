@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { EncounterCard } from "@/components/EncounterCard";
 import { SectionHeading } from "@/components/SectionHeading";
-import { discussions } from "@/data/site";
 import { prisma } from "@/lib/prisma";
 import { encounterCardData } from "@/lib/public-encounters";
 
@@ -17,6 +16,7 @@ const unknowns = [
 
 export default async function Home() {
   const latest = await prisma.encounter.findMany({ where: { status: "PUBLISHED", publishedAt: { not: null }, founderFile: false, deletedAt: null }, include: { category: true }, orderBy: [{ featured: "desc" }, { publishedAt: "desc" }], take: 3 });
+  const discussions = await prisma.discussion.findMany({ where: { deletedAt: null }, include: { category: true, _count: { select: { replies: { where: { deletedAt: null } } } } }, orderBy: [{ pinned: "desc" }, { lastActivityAt: "desc" }], take: 3 });
   return (
     <main>
       <section className="home-hero" aria-labelledby="home-hero-title">
@@ -84,18 +84,10 @@ export default async function Home() {
           <div className="mothership-copy">
             <p className="eyebrow">The Mothership</p>
             <h2>Pull up a chair. Keep an open mind.</h2>
-            <p>A future discussion space for thoughtful theories, local knowledge and the occasional spirited debate. Reading will be open to all; posting will require a verified account in a later phase.</p>
-            <Link className="button button-outline" href="/mothership">Preview the community</Link>
+            <p>A discussion space for thoughtful theories, local knowledge and the occasional spirited debate. Reading is open to all; posting requires a verified member account.</p>
+            <Link className="button button-outline" href="/mothership">Enter the community</Link>
           </div>
-          <div className="topic-stack">
-            {discussions.map((topic) => (
-              <Link href={`/mothership/${topic.slug}`} className="topic-row" key={topic.slug}>
-                <i className="topic-icon" aria-hidden="true">{topic.icon}</i>
-                <div><span>{topic.category}</span><h3>{topic.title}</h3></div>
-                <p>{topic.replies}<small>sample replies</small></p>
-              </Link>
-            ))}
-          </div>
+          <div className="topic-stack">{discussions.length ? discussions.map((topic) => <Link href={`/mothership/${topic.slug}`} className="topic-row" key={topic.slug}><i className="topic-icon" aria-hidden="true">{topic.category.icon}</i><div><span>{topic.category.name}</span><h3>{topic.title}</h3></div><p>{topic._count.replies}<small>replies</small></p></Link>) : <div className="empty-state compact"><h3>No community transmissions yet</h3><p>Verified members can start the first discussion.</p><Link className="button button-small" href="/mothership/new">Start a discussion</Link></div>}</div>
         </div>
       </section>
 

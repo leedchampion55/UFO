@@ -1,0 +1,2 @@
+import { RegisterForm } from "@/components/MemberAuthForms";
+export default function RegisterPage() { return <main className="member-auth-page"><section className="auth-panel"><p className="eyebrow">Join the curious</p><h1>Create an account</h1><p>Membership is free. Verify your email to join discussions and comment on encounters.</p><RegisterForm /><p>Already aboard? <a href="/sign-in">Sign in</a>.</p></section></main>; }
