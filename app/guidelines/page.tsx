@@ -1,0 +1,6 @@
+import type { Metadata } from "next";
+import { PageHero } from "@/components/PageHero";
+export const metadata: Metadata = { title: "Community Guidelines" };
+export default function GuidelinesPage() {
+  return <main><PageHero eyebrow="Pre-launch draft" title="Community guidelines" copy="The shape of a curious, welcoming community. These draft guidelines require review before launch." /><section className="paper-section"><article className="container prose-paper"><div className="legal-warning"><strong>Draft for review.</strong> These guidelines are not yet final.</div><h2>Curiosity over certainty</h2><p>Ask honest questions, explain your reasoning and leave room for information you may not have. Disagreement is welcome; contempt is not.</p><h2>Respect the person telling the story</h2><p>Challenge ideas and interpretations without ridiculing witnesses, contributors or other members. Do not pressure anyone to disclose identifying details or exact locations.</p><h2>Keep evidence in context</h2><p>Say when something is speculation, second-hand information or an edited image. Do not deliberately present fabricated material as genuine.</p><h2>Protect the community</h2><p>No harassment, hate, threats, doxxing, spam or dangerous instructions. Moderation and reporting processes will be defined before community posting launches.</p></article></section></main>;
+}

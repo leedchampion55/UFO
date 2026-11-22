@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function NotFound() { return <main className="not-found"><div className="beam-404"><span>404</span></div><div className="container"><p className="marker">Lost in the fog?</p><h1>This file has vanished.</h1><p>Whatever you were looking for is no longer at these coordinates.</p><div><Link className="button" href="/">Return to Earth</Link><Link className="button button-outline" href="/encounters">Search the archive</Link></div></div></main>; }

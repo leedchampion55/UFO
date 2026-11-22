@@ -1,0 +1,7 @@
+import type { Metadata } from "next";
+import { PageHero } from "@/components/PageHero";
+
+export const metadata: Metadata = { title: "Contact" };
+export default function ContactPage() {
+  return <main><PageHero eyebrow="Contact" title="Send a signal" copy="A contact route will be connected before launch. This Phase 1 page does not transmit messages." /><section className="section contact-section"><div className="container contact-grid"><div><p className="eyebrow">General enquiries</p><h2>We’re not receiving transmissions just yet.</h2><p>The public email address and working contact form still need to be confirmed. Until then, no contact details are collected here.</p><div className="contact-status"><span>Offline</span><p>Contact channel awaiting Phase 2 configuration</p></div></div><form className="contact-form"><div className="form-field"><label htmlFor="contact-name">Name</label><input id="contact-name" placeholder="Your name" disabled /></div><div className="form-field"><label htmlFor="contact-email">Email</label><input id="contact-email" type="email" placeholder="you@example.com" disabled /></div><div className="form-field"><label htmlFor="contact-message">Message</label><textarea id="contact-message" rows={6} placeholder="Contact form activates in a later phase" disabled /></div><button className="button" type="button" disabled>Sending not yet active</button></form></div></section></main>;
+}

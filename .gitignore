@@ -1,0 +1,28 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+.turbo/
+.cache/
+.vercel/
+.DS_Store
+*.log
+*.tsbuildinfo
+*.tmp
+*.temp
+tmp/
+.tmp/
+
+# Local environment and credentials
+.env*
+!.env.example
+
+# Local databases and visitor uploads
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+uploads/
+public/uploads/
