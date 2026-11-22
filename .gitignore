@@ -26,3 +26,5 @@ tmp/
 *.sqlite3
 uploads/
 public/uploads/
+.data/
+generated/prisma/

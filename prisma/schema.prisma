@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EncounterStatus {
+  DRAFT
+  PENDING
+  NEEDS_INFORMATION
+  PUBLISHED
+  REJECTED
+  UNPUBLISHED
+  DELETED
+}
+
+enum MediaType {
+  IMAGE
+}
+
+enum ModerationAction {
+  SUBMITTED
+  CREATED
+  UPDATED
+  REQUESTED_INFORMATION
+  APPROVED
+  REJECTED
+  PUBLISHED
+  UNPUBLISHED
+  DELETED
+  MEDIA_APPROVED
+  MEDIA_REMOVED
+}
+
+enum AdministratorRole {
+  OWNER
+  EDITOR
+}
+
+model Category {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  slug        String      @unique
+  description String?
+  imagePath   String?
+  active      Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  encounters  Encounter[]
+
+  @@index([active, sortOrder])
+}
+
+model Encounter {
+  id                    String                @id @default(uuid())
+  caseReference         String                @unique
+  title                 String
+  slug                  String                @unique
+  categoryId            String
+  category              Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  originalStoryContent  String
+  storyContent          String
+  summary               String?
+  encounterDate         DateTime?
+  approximateDate       String?
+  approximateTime       String?
+  approximateLocation   String?
+  region                String?
+  witnessCount          Int?
+  publicDisplayName     String?
+  publishAnonymously    Boolean               @default(false)
+  publicationConsent    Boolean
+  videoLinks            Json                   @default("[]")
+  submittedAt           DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  publishedAt           DateTime?
+  status                EncounterStatus        @default(PENDING)
+  founderFile           Boolean                @default(false)
+  featured              Boolean                @default(false)
+  administrativeNotes   String?
+  deletedAt             DateTime?
+  createdByAdminId      String?
+  createdByAdmin        Administrator?         @relation("CreatedEncounters", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  media                 EncounterMedia[]
+  contact               SubmissionContact?
+  moderationHistory     EncounterModeration[]
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status, publishedAt])
+  @@index([founderFile, status, publishedAt])
+  @@index([featured, status, publishedAt])
+  @@index([submittedAt])
+}
+
+model EncounterMedia {
+  id                  String         @id @default(uuid())
+  encounterId         String
+  encounter           Encounter      @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  storageKey          String         @unique
+  mediaType           MediaType      @default(IMAGE)
+  originalFileName    String?
+  mimeType            String
+  byteSize            Int
+  width               Int
+  height              Int
+  caption             String?
+  alternativeText     String?
+  uploadedAt          DateTime       @default(now())
+  approvedAt          DateTime?
+  approvedByAdminId   String?
+  approvedByAdmin     Administrator? @relation("ApprovedMedia", fields: [approvedByAdminId], references: [id], onDelete: SetNull)
+  removedAt           DateTime?
+
+  @@index([encounterId, approvedAt, removedAt])
+}
+
+model SubmissionContact {
+  id              String    @id @default(uuid())
+  encounterId     String    @unique
+  encounter       Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  email           String?
+  privateName     String?
+  removalTokenHash String?   @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model EncounterModeration {
+  id               String               @id @default(uuid())
+  encounterId      String
+  encounter        Encounter            @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  administratorId  String?
+  administrator    Administrator?       @relation(fields: [administratorId], references: [id], onDelete: SetNull)
+  action           ModerationAction
+  previousStatus   EncounterStatus?
+  updatedStatus    EncounterStatus?
+  reason           String?
+  metadata         Json?
+  createdAt        DateTime              @default(now())
+
+  @@index([encounterId, createdAt])
+  @@index([administratorId, createdAt])
+}
+
+model Administrator {
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName        String
+  role               AdministratorRole     @default(EDITOR)
+  active             Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  moderationActions  EncounterModeration[]
+  createdEncounters  Encounter[]           @relation("CreatedEncounters")
+  approvedMedia      EncounterMedia[]       @relation("ApprovedMedia")
+}
+
+model RequestRateLimit {
+  id          String   @id @default(uuid())
+  purpose     String
+  keyHash     String
+  windowStart DateTime
+  requestCount Int     @default(1)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([purpose, keyHash, windowStart])
+  @@index([purpose, windowStart])
+}
+
+// Better Auth core and admin-plugin schema.
+model User {
+  id            String          @id
+  name          String
+  email         String          @unique
+  emailVerified Boolean         @default(false)
+  image         String?
+  role          String?         @default("user")
+  banned        Boolean?        @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  administrator Administrator?
+
+  @@map("user")
+}
+
+model Session {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}

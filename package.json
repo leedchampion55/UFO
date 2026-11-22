@@ -2,29 +2,54 @@
   "name": "what-the-ufo",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --env-file=.env --test tests/**/*.test.ts",
+    "db:init": "bash scripts/local-db.sh init",
+    "db:start": "bash scripts/local-db.sh start",
+    "db:stop": "bash scripts/local-db.sh stop",
+    "db:status": "bash scripts/local-db.sh status",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "admin:create": "tsx scripts/create-admin.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@better-auth/prisma-adapter": "1.7.27",
     "@fontsource/barlow-condensed": "latest",
     "@fontsource/inter": "latest",
     "@fontsource/permanent-marker": "latest",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "better-auth": "1.7.27",
+    "dotenv": "latest",
+    "file-type": "22.3.0",
     "next": "16.4.6",
+    "pg": "latest",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "sharp": "latest",
+    "zod": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.5",
     "@types/node": "latest",
+    "@types/pg": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "eslint": "latest",
     "eslint-config-next": "16.4.6",
+    "prisma": "7.10.1",
     "tailwindcss": "4.3.5",
+    "tsx": "latest",
     "typescript": "latest"
+  },
+  "overrides": {
+    "effect": "3.22.5"
   }
 }

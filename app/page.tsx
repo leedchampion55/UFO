@@ -2,16 +2,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { EncounterCard } from "@/components/EncounterCard";
 import { SectionHeading } from "@/components/SectionHeading";
-import { discussions, encounters } from "@/data/site";
+import { discussions } from "@/data/site";
+import { prisma } from "@/lib/prisma";
+import { encounterCardData } from "@/lib/public-encounters";
+
+export const dynamic = "force-dynamic";
 
 const unknowns = [
-  ["UFOs & UAPs", "Silent lights, impossible movements and things in the sky that refuse an easy answer.", "/category-ufo.webp"],
-  ["Ghosts & Hauntings", "Old places, lingering presences and the feeling that you are not quite alone.", "/category-ghosts.webp"],
-  ["Strange Creatures", "Unfamiliar tracks, fleeting silhouettes and Cornwall’s wilder witnesses.", "/category-creatures.webp"],
-  ["Cornish Mysteries", "Folklore, odd histories and curious corners of the Duchy that keep their secrets.", "/category-cornish.webp"],
+  ["UFOs & UAPs", "ufos-uaps", "Silent lights, impossible movements and things in the sky that refuse an easy answer.", "/category-ufo.webp"],
+  ["Ghosts & Hauntings", "ghosts-hauntings", "Old places, lingering presences and the feeling that you are not quite alone.", "/category-ghosts.webp"],
+  ["Strange Creatures", "strange-creatures", "Unfamiliar tracks, fleeting silhouettes and Cornwall’s wilder witnesses.", "/category-creatures.webp"],
+  ["Cornish Mysteries", "cornish-mysteries", "Folklore, odd histories and curious corners of the Duchy that keep their secrets.", "/category-cornish.webp"],
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  const latest = await prisma.encounter.findMany({ where: { status: "PUBLISHED", publishedAt: { not: null }, founderFile: false, deletedAt: null }, include: { category: true }, orderBy: [{ featured: "desc" }, { publishedAt: "desc" }], take: 3 });
   return (
     <main>
       <section className="home-hero" aria-labelledby="home-hero-title">
@@ -34,8 +39,8 @@ export default function Home() {
 
       <section className="section latest-section">
         <div className="container">
-          <SectionHeading eyebrow="Fresh from the casebook" title="Latest encounters" copy="Fictional demonstrations of the stories this archive will hold. No example below is presented as a genuine report." action={<Link className="text-link" href="/encounters">View all encounters</Link>} />
-          <div className="encounter-grid">{encounters.slice(0, 3).map((encounter) => <EncounterCard key={encounter.slug} encounter={encounter} />)}</div>
+          <SectionHeading eyebrow="Fresh from the casebook" title="Latest encounters" copy="Approved community reports, published only after Matt has reviewed them." action={<Link className="text-link" href="/encounters">View all encounters</Link>} />
+          {latest.length ? <div className="encounter-grid">{latest.map((encounter) => <EncounterCard key={encounter.slug} encounter={encounterCardData(encounter)} />)}</div> : <div className="empty-state"><span aria-hidden="true">◌</span><h3>No encounters in the archive yet</h3><p>Be the first to share something strange.</p><Link className="button" href="/report">Share an encounter</Link></div>}
         </div>
       </section>
 
@@ -63,8 +68,8 @@ export default function Home() {
         <div className="container">
           <SectionHeading eyebrow="Choose your rabbit hole" title="Explore the unknown" copy="Begin with the question that keeps you looking up—or makes you hurry home." />
           <div className="unknown-grid">
-            {unknowns.map(([title, copy, image], index) => (
-              <Link href={`/encounters?category=${encodeURIComponent(title)}`} className="unknown-tile" key={title}>
+            {unknowns.map(([title, slug, copy, image], index) => (
+              <Link href={`/encounters?category=${slug}`} className="unknown-tile" key={title}>
                 <Image src={image} alt={`Illustrative atmospheric scene for ${title}; not encounter evidence`} fill sizes="(max-width: 700px) 100vw, 50vw" />
                 <span className="unknown-index">0{index + 1}</span>
                 <div><h3>{title}</h3><p>{copy}</p><span>Browse files</span></div>
