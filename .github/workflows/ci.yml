@@ -23,7 +23,7 @@ jobs:
         image: postgres:16.6-alpine
         env:
           POSTGRES_USER: ufo_ci
-          POSTGRES_PASSWORD: ufo_ci_password
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: ufo_ci
         ports:
           - 5432:5432
@@ -35,7 +35,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://ufo_ci@127.0.0.1:5432/ufo_ci
       DIRECT_URL: postgresql://ufo_ci@127.0.0.1:5432/ufo_ci
-      PGPASSWORD: ufo_ci_password
       BETTER_AUTH_SECRET: ci-only-better-auth-secret-at-least-32-characters
       BETTER_AUTH_URL: http://127.0.0.1:3100
       NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
