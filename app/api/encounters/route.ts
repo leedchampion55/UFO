@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    if (process.env.PUBLIC_SUBMISSIONS_ENABLED === "false") return NextResponse.json({ error: "Encounter submissions are temporarily paused. Please try again later." }, { status: 503, headers: { "retry-after": "3600" } });
     assertSameOrigin(request);
     await enforceRateLimit(request, "public-submission", 4, 60 * 60);
     assertUploadRequestSize(request);

@@ -5,6 +5,8 @@ const productionHttps = process.env.NODE_ENV === "production" && canonicalOrigin
 const allowedServerActionOrigins = canonicalOrigin ? [new URL(canonicalOrigin).host] : ["localhost:3000"];
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  allowedDevOrigins: ["127.0.0.1"],
   turbopack: {
     root: process.cwd(),
   },

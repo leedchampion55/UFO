@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - "codex/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_USER: ufo_ci
+          POSTGRES_PASSWORD: ufo_ci_password
+          POSTGRES_DB: ufo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ufo_ci -d ufo_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ufo_ci@127.0.0.1:5432/ufo_ci
+      DIRECT_URL: postgresql://ufo_ci@127.0.0.1:5432/ufo_ci
+      PGPASSWORD: ufo_ci_password
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://127.0.0.1:3100
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
+      RATE_LIMIT_SECRET: ci-only-rate-limit-secret-at-least-32-characters
+      TRUSTED_PROXY_MODE: local
+      APP_RUNTIME_MODE: local
+      STORAGE_DRIVER: local
+      PRIVATE_MEDIA_ROOT: .data/ci-private-media
+      EMAIL_DRIVER: development
+      DEV_MAIL_ROOT: .data/ci-dev-mail
+      PUBLIC_SUBMISSIONS_ENABLED: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Node.js
+        uses: actions/setup-node@1e60f620b9541dca1515407b776f7f88b6efd8a
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Apply isolated database migrations
+        run: npm run db:migrate
+      - name: Check repository security hygiene
+        run: npm run ci:security
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Install Chromium for smoke tests
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke tests with disposable database
+        env:
+          TEST_DATABASE_ADMIN_URL: postgresql://ufo_ci@127.0.0.1:5432/postgres
+        run: npm run test:browser

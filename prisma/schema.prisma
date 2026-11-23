@@ -291,6 +291,16 @@ model RequestRateLimit {
   @@index([purpose, windowStart])
 }
 
+model OperationalLease {
+  name       String   @id
+  holder     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
 // Better Auth core and admin-plugin schema.
 model User {
   id            String          @id

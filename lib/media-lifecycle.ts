@@ -64,3 +64,12 @@ export async function reconcileMediaStorage(options: { dryRun?: boolean; storage
   }
   return { dryRun, actions };
 }
+
+export async function retryFailedMediaDeletions(options: { dryRun?: boolean; storage?: PrivateObjectStorage } = {}) {
+  const dryRun = options.dryRun ?? true;
+  const storage = options.storage ?? privateStorage;
+  const records = await prisma.encounterMedia.findMany({ where: { storageStatus: "DELETING" }, select: { id: true, storageKey: true } });
+  let completed = 0;
+  if (!dryRun) for (const record of records) { await deleteMediaObject(record.id, storage); completed += 1; }
+  return { dryRun, found: records.length, completed };
+}

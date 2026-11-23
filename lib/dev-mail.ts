@@ -11,7 +11,7 @@ export type DevelopmentEmail = {
 };
 
 export async function deliverDevelopmentEmail(message: DevelopmentEmail) {
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && process.env.APP_RUNTIME_MODE !== "local") {
     throw new Error("A production transactional email transport must be configured before member email can be sent.");
   }
   const root = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.DEV_MAIL_ROOT ?? ".data/dev-mail");

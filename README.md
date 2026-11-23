@@ -2,11 +2,11 @@
 
 A cinematic Cornish paranormal archive with moderated encounter publishing, free member accounts, encounter comments and The Mothership community forum.
 
-Phase 4C is a security-hardened, local-first application with production-capable Resend email and private Cloudflare R2 adapters. It is not deployed and no external account is required for local development.
+Phase 4D is a security-hardened, local-first application with production-capable Resend email and private Cloudflare R2 adapters plus Railway/Neon configuration, CI, health checks, distributed maintenance leases, encrypted backup drills and browser smoke tests. It is not deployed and no external account is required for local development.
 
 ## Requirements
 
-- Node.js 20.19+ (Node 22 LTS recommended)
+- Node.js 22 LTS (the deployment and CI version is pinned by `.nvmrc`)
 - npm
 - PostgreSQL 16+ or Docker
 
@@ -72,7 +72,7 @@ Run one delivery pass with:
 npm run email:process
 ```
 
-Railway should run that command as a scheduled worker at least once per minute, or run `npm run email:worker` as a dedicated continuously running worker. Do not use an unawaited request callback as a substitute. Inspect failures with `npm run email:status`. `npm run email:cleanup` is a dry run; add `-- --apply` only after reviewing the count. Delivered/suppressed rows are retained for 30 days and dead letters for 90 days.
+Railway should run `npm run email:worker` as one dedicated continuously running worker. A PostgreSQL lease prevents overlapping worker passes, atomic message claims prevent duplicate ownership, and stale message locks recover after ten minutes. `SIGTERM` stops new passes and waits for the active pass before disconnecting. Do not use an unauthenticated HTTP job endpoint. Inspect failures with `npm run email:status`. `npm run email:cleanup` is a dry run; add `-- --apply` only after reviewing the count. Delivered/suppressed rows are retained for 30 days and dead letters for 90 days.
 
 ### Resend configuration
 
@@ -162,9 +162,17 @@ It repairs confirmed object/record state, retries `DELETING` records, marks aban
 
 Contributor removal continues to unpublish immediately and erase private contact information; it does not silently establish a new evidence-deletion policy. The owner must approve a retention/deletion schedule before launch. Administrative deletion records an audit action and retries failed object deletion through reconciliation.
 
+## Deployment and operations
+
+Railway, Neon, CI, maintenance, backup/restore, monitoring, staging, rollback and incident instructions are in [docs/OPERATIONS.md](docs/OPERATIONS.md). `railway.json` configures Railpack, a reproducible `npm ci` build, `/health/ready`, and bounded restarts; it does not deploy anything or contain credentials.
+
+`/health/live` proves only that the process responds. `/health/ready` performs one lightweight database query with a two-second application timeout and returns a generic 503 on failure. Neither endpoint exposes configuration, database identifiers or internal error text. Use readiness for Railway deployment activation and liveness for independent uptime monitoring.
+
+The operator-only `PUBLIC_SUBMISSIONS_ENABLED=false` switch rejects new encounter submissions before request-body parsing and replaces the public form with a clear paused state. It does not affect existing content or community access. Railway/proxy request-size and slow-client controls are still required because application code cannot prevent upstream buffering.
+
 ## Database and migrations
 
-Prisma migrations live in `prisma/migrations`. Phase 4C adds the durable email outbox, idempotent webhook events, hashed recipient suppressions and media lifecycle state. A follow-up data migration safely marks pre-existing media ready or removed without resetting records. Username and canonical-username uniqueness remain enforced by database constraints. Public registration compensates a failed profile write by deleting the just-created authentication user; concurrent username collisions are database-tested and do not leave orphaned users.
+Prisma migrations live in `prisma/migrations`. Phase 4D adds only `OperationalLease`, used to serialize maintenance across application instances and recover automatically after lease expiry. `DATABASE_URL` is the pooled application URL; `DIRECT_URL` is the direct migration URL. Production validation requires TLS on both and rejects a pooled Neon endpoint in `DIRECT_URL`. Run `prisma migrate deploy` exactly once as a controlled release job before activating the web release—never in every replica start command.
 
 Useful commands:
 
@@ -183,9 +191,12 @@ npm run typecheck
 npm test
 npm run build
 npm audit --omit=dev
+npm run ops:test-migrations
+npm run ops:test-backup
+npm run test:browser
 ```
 
-The database-backed suite additionally covers outbox retries/concurrent claims, Resend idempotency, signed and duplicate webhook events, suppression, privacy-minimised encounter notifications, mocked R2 operations, interrupted uploads, media reconciliation and all important Phase 2–4B regressions. Tests never call real Resend or R2 accounts.
+GitHub Actions repeats installation, isolated PostgreSQL migration, repository security checks, lint, typecheck, database-backed tests, build, production audit and headless browser journeys. The browser runner creates and drops a uniquely named disposable database and uses local mail/media adapters. Tests never call real Resend or R2 accounts.
 
 The nonce-based Content Security Policy is generated in `proxy.ts`. The root layout is dynamic so Next.js can attach the nonce to framework assets. Global response headers also provide `nosniff`, strict referrer policy, Permissions Policy, clickjacking protection and same-origin opener isolation. HSTS is emitted only when a production build is configured with an HTTPS canonical origin, so local HTTP development is unaffected.
 

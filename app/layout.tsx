@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   description: "A curious Cornish community for UFO sightings, paranormal experiences, unexplained encounters and strange stories.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   openGraph: { title: "What the UFO?!", description: "Strange Encounters of the Cornish Kind", images: ["/reference-artwork.png"] },
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/icon.svg", type: "image/svg+xml" }] },
 };
 
 export const viewport: Viewport = { colorScheme: "dark", themeColor: "#091620" };

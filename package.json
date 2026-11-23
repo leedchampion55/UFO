@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0 <23"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start-production.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --env-file=.env --test tests/**/*.test.ts",
@@ -23,6 +26,15 @@
     "email:status": "tsx scripts/email-outbox-status.ts",
     "email:cleanup": "tsx scripts/cleanup-email-outbox.ts",
     "media:reconcile": "tsx scripts/reconcile-media.ts",
+    "media:retry-deletions": "tsx scripts/retry-media-deletions.ts",
+    "media:backup": "tsx scripts/backup-media.ts",
+    "media:restore": "tsx scripts/restore-media.ts",
+    "ops:backup-db": "bash scripts/backup-postgres.sh",
+    "ops:restore-db": "bash scripts/restore-postgres.sh",
+    "ops:test-backup": "bash scripts/test-backup-restore.sh",
+    "ops:test-migrations": "bash scripts/test-disposable-migrations.sh",
+    "test:browser": "bash scripts/run-browser-smoke.sh",
+    "ci:security": "tsx scripts/security-check.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -45,6 +57,7 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@tailwindcss/postcss": "4.3.5",
     "@types/node": "latest",
     "@types/pg": "latest",
