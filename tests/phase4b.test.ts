@@ -92,7 +92,7 @@ describe("Phase 4B security hardening", { concurrency: false }, () => {
 
   it("rejects insecure production environment values while preserving local configuration", () => {
     const local: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "development" }; assert.equal(validateRuntimeEnvironment(local).STORAGE_DRIVER, "local");
-    assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", BETTER_AUTH_URL: "http://localhost:3000", NEXT_PUBLIC_APP_URL: "http://localhost:3000" }), /production application origin/);
+    assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", APP_RUNTIME_MODE: "production", BETTER_AUTH_URL: "http://localhost:3000", NEXT_PUBLIC_APP_URL: "http://localhost:3000" }), /production application origin/);
     assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", APP_RUNTIME_MODE: "production", BETTER_AUTH_URL: "https://ufo.example", NEXT_PUBLIC_APP_URL: "https://ufo.example", DATABASE_URL: "postgresql://ufo@db.example/ufo", DIRECT_URL: "postgresql://ufo@db.example/ufo", TRUSTED_PROXY_MODE: "railway", STORAGE_DRIVER: "r2", EMAIL_DRIVER: "resend" }), /Resend configuration is incomplete/);
   });
 
