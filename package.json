@@ -12,7 +12,7 @@
     "start": "node scripts/start-production.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --env-file-if-exists=.env --test tests/**/*.test.ts",
+    "test": "tsx --env-file-if-exists=.env --test --test-concurrency=1 tests/**/*.test.ts",
     "db:init": "bash scripts/local-db.sh init",
     "db:start": "bash scripts/local-db.sh start",
     "db:stop": "bash scripts/local-db.sh stop",
