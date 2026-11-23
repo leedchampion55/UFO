@@ -8,6 +8,7 @@ import { createStableSlug } from "@/lib/encounters";
 import { prisma } from "@/lib/prisma";
 import { enforceRateLimit } from "@/lib/security";
 import { appendInternalQuery } from "@/lib/redirects";
+import { enqueueTransactionalEmail, processEmailOutbox } from "@/lib/email/outbox";
 
 const content = z.string().trim().min(3).max(5000);
 
@@ -69,6 +70,13 @@ export async function reportContent(formData: FormData) {
   const member = await getMemberSession(); await rateLimit("community-report", 8, 60 * 60);
   const data = z.object({ targetType: z.enum(["DISCUSSION", "DISCUSSION_REPLY", "ENCOUNTER_COMMENT"]), targetId: z.string().uuid(), reason: z.enum(["SPAM", "HARASSMENT", "PERSONAL_INFORMATION", "INAPPROPRIATE_CONTENT", "MISLEADING_OR_IMPERSONATION", "OTHER"]), details: z.string().trim().max(500).optional(), returnTo: z.string() }).parse(Object.fromEntries(formData.entries()));
   const target = data.targetType === "DISCUSSION" ? { discussionId: data.targetId } : data.targetType === "DISCUSSION_REPLY" ? { discussionReplyId: data.targetId } : { encounterCommentId: data.targetId };
-  await prisma.communityReport.create({ data: { reporterId: member?.profile.id, reason: data.reason, details: data.details || null, ...target } });
+  const notificationId = await prisma.$transaction(async (transaction) => {
+    const report = await transaction.communityReport.create({ data: { reporterId: member?.profile.id, reason: data.reason, details: data.details || null, ...target } });
+    const administratorEmail = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
+    if (!administratorEmail) return null;
+    const notification = await enqueueTransactionalEmail({ kind: "COMMUNITY_REPORT", to: administratorEmail, idempotencyKey: `community-report/${report.id}`, payload: { reason: data.reason.replaceAll("_", " "), reportedAt: report.createdAt.toISOString(), actionUrl: `${process.env.NEXT_PUBLIC_APP_URL}/admin/community?view=reports` } }, transaction);
+    return notification.id;
+  });
+  if (notificationId && (process.env.EMAIL_DRIVER ?? "development") === "development") await processEmailOutbox({ ids: [notificationId], limit: 1 }).catch(() => undefined);
   redirect(appendInternalQuery(data.returnTo, "reported", "true", "/report"));
 }

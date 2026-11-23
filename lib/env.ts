@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const PLACEHOLDER = /(replace-with|changeme|example-secret|better-auth-secret)/i;
+const PROVIDER_PLACEHOLDER = /(replace|changeme|example)/i;
 
 function validHttpOrigin(value: string) {
   try {
@@ -9,6 +10,19 @@ function validHttpOrigin(value: string) {
   } catch {
     return false;
   }
+}
+
+function senderAddress(value: string) {
+  return value.match(/(?:^|<)([^<>\s]+@[^<>\s]+)(?:>|$)/)?.[1]?.toLowerCase();
+}
+
+function validR2Endpoint(value: string, production: boolean) {
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.search || url.hash) return false;
+    if (production) return url.protocol === "https:" && url.pathname === "/" && url.hostname.endsWith(".r2.cloudflarestorage.com");
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch { return false; }
 }
 
 export function trustedApplicationOrigins() {
@@ -33,6 +47,17 @@ export function validateRuntimeEnvironment(environment: NodeJS.ProcessEnv = proc
     EMAIL_DRIVER: z.enum(["development", "resend"]).default("development"),
     TRUSTED_PROXY_MODE: z.enum(["none", "local", "railway"]).default("local"),
     APP_RUNTIME_MODE: z.enum(["local", "production"]).optional(),
+    RESEND_API_KEY: z.string().min(20).optional(),
+    RESEND_FROM: z.string().min(3).optional(),
+    RESEND_SENDING_DOMAIN: z.string().min(3).optional(),
+    RESEND_WEBHOOK_SECRET: z.string().min(20).optional(),
+    ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
+    R2_ENDPOINT: z.string().optional(),
+    R2_BUCKET: z.string().min(3).max(63).optional(),
+    R2_ACCESS_KEY_ID: z.string().min(8).optional(),
+    R2_SECRET_ACCESS_KEY: z.string().min(16).optional(),
+    R2_REGION: z.string().min(1).default("auto"),
+    R2_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("false"),
   });
   const parsed = schema.safeParse(environment);
   if (!parsed.success) throw new Error(`Invalid runtime environment: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}`);
@@ -48,6 +73,15 @@ export function validateRuntimeEnvironment(environment: NodeJS.ProcessEnv = proc
   }
   const additionalOrigins = (environment.TRUSTED_APP_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
   if (additionalOrigins.some((origin) => !validHttpOrigin(origin))) throw new Error("Invalid runtime environment: every trusted origin must be an exact HTTP(S) origin");
+  if (parsed.data.EMAIL_DRIVER === "resend") {
+    if (!parsed.data.RESEND_API_KEY || !parsed.data.RESEND_FROM || !parsed.data.RESEND_SENDING_DOMAIN || !parsed.data.RESEND_WEBHOOK_SECRET || !parsed.data.ADMIN_NOTIFICATION_EMAIL) throw new Error("Invalid runtime environment: Resend configuration is incomplete");
+    const from = senderAddress(parsed.data.RESEND_FROM);
+    const fromDomain = from?.split("@")[1];
+    if (!fromDomain || !(fromDomain === parsed.data.RESEND_SENDING_DOMAIN || fromDomain.endsWith(`.${parsed.data.RESEND_SENDING_DOMAIN}`))) throw new Error("Invalid runtime environment: RESEND_FROM must use the configured sending domain");
+  }
+  if (parsed.data.STORAGE_DRIVER === "r2") {
+    if (!parsed.data.R2_ENDPOINT || !parsed.data.R2_BUCKET || !parsed.data.R2_ACCESS_KEY_ID || !parsed.data.R2_SECRET_ACCESS_KEY || !validR2Endpoint(parsed.data.R2_ENDPOINT, production)) throw new Error("Invalid runtime environment: R2 configuration is incomplete or invalid");
+  }
   if (production) {
     const app = new URL(parsed.data.NEXT_PUBLIC_APP_URL);
     const database = new URL(parsed.data.DATABASE_URL);
@@ -57,7 +91,8 @@ export function validateRuntimeEnvironment(environment: NodeJS.ProcessEnv = proc
     if (parsed.data.STORAGE_DRIVER !== "r2" || parsed.data.EMAIL_DRIVER !== "resend") {
       throw new Error("Invalid runtime environment: production requires the Phase 4C R2 and Resend drivers");
     }
-    throw new Error("Invalid runtime environment: Phase 4C production storage and email drivers are not implemented yet");
+    if ([parsed.data.RESEND_API_KEY, parsed.data.RESEND_WEBHOOK_SECRET, parsed.data.R2_ACCESS_KEY_ID, parsed.data.R2_SECRET_ACCESS_KEY].some((value) => !value || PROVIDER_PLACEHOLDER.test(value))) throw new Error("Invalid runtime environment: production provider credentials must not be placeholders");
+    if (parsed.data.R2_FORCE_PATH_STYLE === "true") throw new Error("Invalid runtime environment: production R2 must not use path-style addressing");
   }
   return parsed.data;
 }

@@ -4,7 +4,7 @@ import { admin, twoFactor } from "better-auth/plugins";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "./prisma";
-import { deliverDevelopmentEmail } from "./dev-mail";
+import { enqueueAndDeliverLocally } from "./email/outbox";
 import { trustedApplicationOrigins } from "./env";
 import { safeInternalPath } from "./redirects";
 
@@ -24,14 +24,17 @@ export const auth = betterAuth({
     maxPasswordLength: 128,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      await deliverDevelopmentEmail({ to: user.email, subject: "Reset your What the UFO?! password", kind: "PASSWORD_RESET", actionUrl: url });
+      await enqueueAndDeliverLocally({ kind: "PASSWORD_RESET", to: user.email, payload: { actionUrl: url } });
+    },
+    onPasswordReset: async ({ user }) => {
+      await enqueueAndDeliverLocally({ kind: "PASSWORD_RESET_SECURITY", to: user.email, payload: { occurredAt: new Date().toISOString() } });
     },
   },
   emailVerification: {
     sendOnSignUp: false,
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({ user, url }) => {
-      await deliverDevelopmentEmail({ to: user.email, subject: "Verify your What the UFO?! membership", kind: "EMAIL_VERIFICATION", actionUrl: url });
+      await enqueueAndDeliverLocally({ kind: "EMAIL_VERIFICATION", to: user.email, payload: { actionUrl: url } });
     },
   },
   user: { deleteUser: { enabled: true } },

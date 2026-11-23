@@ -19,7 +19,7 @@ export default async function EncounterDetail({ params, searchParams }: { params
   const query = await searchParams;
   const encounter = await prisma.encounter.findFirst({
     where: { slug, status: "PUBLISHED", publishedAt: { not: null }, deletedAt: null },
-    include: { category: true, media: { where: { approvedAt: { not: null }, removedAt: null }, orderBy: { uploadedAt: "asc" } } },
+    include: { category: true, media: { where: { approvedAt: { not: null }, removedAt: null, storageStatus: "READY" }, orderBy: { uploadedAt: "asc" } } },
   });
   if (!encounter) notFound();
   const related = await prisma.encounter.findMany({ where: { id: { not: encounter.id }, status: "PUBLISHED", categoryId: encounter.categoryId, founderFile: encounter.founderFile, deletedAt: null }, include: { category: true }, orderBy: { publishedAt: "desc" }, take: 2 });

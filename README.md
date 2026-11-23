@@ -2,7 +2,7 @@
 
 A cinematic Cornish paranormal archive with moderated encounter publishing, free member accounts, encounter comments and The Mothership community forum.
 
-Phase 4B is a security-hardened, local-first application. It is not deployed and deliberately refuses a production runtime until Phase 4C provides supported Resend email and private R2 storage drivers.
+Phase 4C is a security-hardened, local-first application with production-capable Resend email and private Cloudflare R2 adapters. It is not deployed and no external account is required for local development.
 
 ## Requirements
 
@@ -56,9 +56,31 @@ Public registration accepts an email address, unique username and password of at
 3. Open the captured verification link.
 4. Sign in at `/sign-in`.
 
-Development verification and password-recovery messages are written with restrictive permissions beneath ignored `.data/dev-mail`. This capture route returns 404 in production. Production delivery is deliberately not bypassed: `lib/dev-mail.ts` fails closed in production until a transactional email adapter is configured. Configure a reputable provider, verified sender, delivery monitoring and the correct `BETTER_AUTH_URL` before launch.
+Development verification, password-recovery and security messages are delivered from the PostgreSQL outbox into ignored `.data/dev-mail` with restrictive permissions. This capture route returns 404 in production. Production never falls back to the development mailbox.
 
 Unverified accounts may sign in to inspect account status and resend verification, but server-side authorization prevents them from commenting or posting. Account settings at `/account` support display name, biography, verification resend and confirmed deletion. Public profiles never expose email addresses.
+
+## Transactional email and outbox
+
+Set `EMAIL_DRIVER=development` locally or `EMAIL_DRIVER=resend` in production. Verification, password recovery, password-reset security notices, encounter notifications and optional community-report notifications are queued in `EmailOutbox`. Encounter and report notifications are committed in the same PostgreSQL transaction as their business record. A provider failure therefore cannot erase an already saved encounter.
+
+The worker claims messages atomically, recovers processing locks older than ten minutes, supplies a stable Resend idempotency key, retries transient failures with bounded exponential backoff and moves permanent/exhausted failures to `DEAD_LETTER`. Hard bounces, complaints and provider suppressions create a keyed recipient suppression without storing another copy of the address. The Security page in Mission Control and `npm run email:status` expose delivery state and safe error codes without message bodies, secure URLs or full recipient addresses.
+
+Run one delivery pass with:
+
+```bash
+npm run email:process
+```
+
+Railway should run that command as a scheduled worker at least once per minute, or run `npm run email:worker` as a dedicated continuously running worker. Do not use an unawaited request callback as a substitute. Inspect failures with `npm run email:status`. `npm run email:cleanup` is a dry run; add `-- --apply` only after reviewing the count. Delivered/suppressed rows are retained for 30 days and dead letters for 90 days.
+
+### Resend configuration
+
+Production requires `RESEND_API_KEY`, `RESEND_FROM`, `RESEND_SENDING_DOMAIN`, `RESEND_WEBHOOK_SECRET` and `ADMIN_NOTIFICATION_EMAIL`. Verify the sending domain in Resend, publish the supplied SPF and DKIM records, and establish a reviewed DMARC policy. Use a dedicated transactional subdomain. Open and click tracking must be disabled on the Resend domain used for authentication messages; the Resend send-email API does not expose a per-message tracking switch.
+
+Create a Resend webhook pointing to `/api/webhooks/resend` for `email.delivered`, `email.delivery_delayed`, `email.failed`, `email.bounced`, `email.complained` and `email.suppressed`. The route verifies the raw request with the Resend signing secret before processing it and records the `svix-id`, making repeated events idempotent. Never log raw webhook bodies, verification/reset URLs or email bodies.
+
+To rotate Resend credentials, create the replacement key, update Railway’s secret, restart the web and worker services, confirm a controlled delivery, then revoke the old key. Rotate the webhook signing secret separately and update the application before accepting events signed only by the new secret. No real Resend request is made by the automated suite.
 
 ## Community workflows
 
@@ -119,13 +141,30 @@ Never store real recovery codes in `.env`, documentation, source control, screen
 - Originals are not retained. Processed images live in ignored `.data/private-media` and are served by an access-controlled route.
 - A private recovery token supports `/removal-request`; verified removal unpublishes the encounter, revokes public media access and erases contact details.
 
-Production should replace local media storage with private object storage while preserving authorization and revocation checks.
+Set `STORAGE_DRIVER=local` for the ignored development store or `STORAGE_DRIVER=r2` for the production adapter. Both use the same protected media route; the application never emits an R2 public URL or presigned GET URL.
 
 Image processing is limited to two concurrent requests with at most four waiting requests per application instance. Invalid uploads and submissions consume rate-limit capacity. The application rejects a declared multipart body above 52 MB before calling `formData()`, but this does **not** stop a reverse proxy or framework from buffering bytes first. Railway must enforce an upstream request-size ceiling close to 52 MB, request/header timeouts, and must not expose the service around its public proxy. Slow-client and abandoned-request protection is an infrastructure control. Sharp uses in-memory buffers and disables its file cache, so there are no application temporary upload files to sweep.
 
+### Cloudflare R2 and media lifecycle
+
+Production requires `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_REGION` (normally `auto`). Create a private bucket, disable the public `r2.dev` URL and bucket listing, and issue a bucket-scoped token limited to object read/write/delete/list operations. EU jurisdiction can be selected when the bucket is created; use the corresponding account endpoint. The runtime credential must not manage buckets, DNS or account settings.
+
+Media moves through `PENDING_UPLOAD`, `READY`, `FAILED`, `DELETING` and `REMOVED`. A database record is created before an object write and public or administrator media responses require `READY`. Publication approves only ready objects. Removal revokes access in PostgreSQL before object deletion, so a failed R2 deletion cannot leave a public URL. Storage failures retain a safe error code and can be retried.
+
+Reconciliation is dry-run by default:
+
+```bash
+npm run media:reconcile
+npm run media:reconcile -- --apply
+```
+
+It repairs confirmed object/record state, retries `DELETING` records, marks abandoned pending uploads failed and identifies objects with no database record. The apply mode deletes only confirmed orphan keys. Review every dry run and back up the database and bucket before using apply in production. The migration backfills existing local media as ready or removed and does not relocate or delete it.
+
+Contributor removal continues to unpublish immediately and erase private contact information; it does not silently establish a new evidence-deletion policy. The owner must approve a retention/deletion schedule before launch. Administrative deletion records an audit action and retries failed object deletion through reconciliation.
+
 ## Database and migrations
 
-Prisma migrations live in `prisma/migrations`. The Phase 4B migration adds Better Auth TOTP records, an administrator MFA flag and a per-session strong-authentication timestamp without resetting existing records. Username and canonical-username uniqueness remain enforced by database constraints. Public registration compensates a failed profile write by deleting the just-created authentication user; concurrent username collisions are database-tested and do not leave orphaned users.
+Prisma migrations live in `prisma/migrations`. Phase 4C adds the durable email outbox, idempotent webhook events, hashed recipient suppressions and media lifecycle state. A follow-up data migration safely marks pre-existing media ready or removed without resetting records. Username and canonical-username uniqueness remain enforced by database constraints. Public registration compensates a failed profile write by deleting the just-created authentication user; concurrent username collisions are database-tested and do not leave orphaned users.
 
 Useful commands:
 
@@ -146,7 +185,7 @@ npm run build
 npm audit --omit=dev
 ```
 
-The database-backed suite covers registration integrity and collisions, verification, password-reset session revocation, real TOTP enrolment/challenges, invalid factors, single-use recovery codes, redirect/origin/CSRF controls, proxy trust, upload boundaries, rate-limit cleanup, security headers, suspension, community moderation, and all important Phase 2 privacy and publishing regressions.
+The database-backed suite additionally covers outbox retries/concurrent claims, Resend idempotency, signed and duplicate webhook events, suppression, privacy-minimised encounter notifications, mocked R2 operations, interrupted uploads, media reconciliation and all important Phase 2–4B regressions. Tests never call real Resend or R2 accounts.
 
 The nonce-based Content Security Policy is generated in `proxy.ts`. The root layout is dynamic so Next.js can attach the nonce to framework assets. Global response headers also provide `nosniff`, strict referrer policy, Permissions Policy, clickjacking protection and same-origin opener isolation. HSTS is emitted only when a production build is configured with an HTTPS canonical origin, so local HTTP development is unaffected.
 
@@ -154,11 +193,18 @@ For Railway, set `TRUSTED_PROXY_MODE=railway` and accept the client address only
 
 ## Known limitations and production checklist
 
-- Transactional email needs a production provider and credentials; local capture is development-only.
-- Private evidence still needs the Phase 4C R2 adapter. Local filesystem storage is not accepted by production environment validation.
+- Real Resend domain verification, deliverability, webhook delivery and bounce behaviour remain unverified until controlled staging credentials are supplied.
+- Real R2 permissions, EU-jurisdiction endpoint behaviour, latency and restore procedures remain unverified until a private staging bucket is supplied.
 - Railway must provide upstream aggregate-body, slow-request and timeout enforcement; application checks occur after some platform buffering may already have happened.
 - Rate limiting is PostgreSQL-backed and works across multiple application instances. It does not yet provide distributed bot challenges or a provider WAF.
 - Community posts are plain text with no images, private messages, realtime chat, voting or AI moderation by design.
 - MFA is intentionally administrator-only in Phase 4B; member MFA and passkeys are optional future work.
+- The contributor-evidence retention/deletion schedule still needs owner and legal approval.
 
-Before launch, complete Phase 4C production email and R2 storage, use managed PostgreSQL with encrypted and restore-tested backups, configure Railway limits, HTTPS, monitoring, error reporting, audit retention and cost alerts, and complete the privacy/terms and accessibility review. Never commit `.env`, `.data`, database files, uploads, TOTP secrets or recovery codes.
+### `BETTER_AUTH_SECRET` rotation and MFA recovery-code follow-up
+
+`BETTER_AUTH_SECRET` encrypts administrator TOTP secrets and Better Auth’s recovery-code set. Changing it without a migration makes existing MFA material unreadable and can lock every administrator out. Never rotate it as a routine environment-only change. Preserve the previous secret in the approved secrets manager, take and test a database backup, rehearse in staging, maintain a verified operator recovery path, then deliberately reset/re-enrol every administrator before retiring the old secret. There is no HTTP bypass.
+
+Better Auth 1.7.27 supports plain or reversibly encrypted backup-code storage, not a native one-way-hashed mode; Phase 4B uses the safer supported encrypted option and codes are single-use. A future security review should replace this with one-way per-code hashes if the authentication library adds support or if a carefully audited custom verifier is introduced. TOTP seeds themselves must remain decryptable for verification.
+
+Before launch, connect and validate Resend and R2 in isolated staging, use managed PostgreSQL with encrypted and restore-tested backups, configure the Railway web and outbox worker services, limits, HTTPS, monitoring, error reporting, audit retention and cost alerts, and complete the privacy/terms and accessibility review. Never commit `.env`, `.data`, database files, uploads, API keys, TOTP secrets or recovery codes.

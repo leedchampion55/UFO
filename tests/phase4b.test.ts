@@ -62,6 +62,7 @@ function decodeBase32(value: string) {
 describe("Phase 4B security hardening", { concurrency: false }, () => {
   after(async () => {
     if (administratorId) await prisma.communityModeration.deleteMany({ where: { administratorId } });
+    await prisma.emailOutbox.deleteMany({ where: { recipient: { in: [adminEmail, ...memberEmails] } } });
     await prisma.user.deleteMany({ where: { email: { in: [adminEmail, ...memberEmails] } } });
     for (const email of memberEmails) await deleteDevelopmentEmailsForRecipient(email);
     await prisma.requestRateLimit.deleteMany({ where: { purpose: { startsWith: `phase4b-${marker}` } } });
@@ -92,7 +93,7 @@ describe("Phase 4B security hardening", { concurrency: false }, () => {
   it("rejects insecure production environment values while preserving local configuration", () => {
     const local: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "development" }; assert.equal(validateRuntimeEnvironment(local).STORAGE_DRIVER, "local");
     assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", BETTER_AUTH_URL: "http://localhost:3000", NEXT_PUBLIC_APP_URL: "http://localhost:3000" }), /production application origin/);
-    assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", APP_RUNTIME_MODE: "production", BETTER_AUTH_URL: "https://ufo.example", NEXT_PUBLIC_APP_URL: "https://ufo.example", DATABASE_URL: "postgresql://ufo:secret@db.example/ufo", DIRECT_URL: "postgresql://ufo:secret@db.example/ufo", TRUSTED_PROXY_MODE: "railway", STORAGE_DRIVER: "r2", EMAIL_DRIVER: "resend" }), /Phase 4C/);
+    assert.throws(() => validateRuntimeEnvironment({ ...local, NODE_ENV: "production", APP_RUNTIME_MODE: "production", BETTER_AUTH_URL: "https://ufo.example", NEXT_PUBLIC_APP_URL: "https://ufo.example", DATABASE_URL: "postgresql://ufo:secret@db.example/ufo", DIRECT_URL: "postgresql://ufo:secret@db.example/ufo", TRUSTED_PROXY_MODE: "railway", STORAGE_DRIVER: "r2", EMAIL_DRIVER: "resend" }), /Resend configuration is incomplete/);
   });
 
   it("enforces declared aggregate upload size before parsing multipart data", () => {
@@ -122,7 +123,7 @@ describe("Phase 4B security hardening", { concurrency: false }, () => {
 
   it("allows only one concurrent registration for a canonical username", async () => {
     const username = `collision_${marker.slice(0, 8)}`; const emails = [`phase4b-a-${marker}@example.test`, `phase4b-b-${marker}@example.test`]; memberEmails.push(...emails);
-    const responses = await Promise.all(emails.map((email, index) => register(new Request("http://localhost:3000/api/members/register", { method: "POST", headers: baseHeaders({ "x-real-ip": `192.0.2.${index + 1}` }), body: JSON.stringify({ email, username, password, website: "" }) }))));
+    const responses = await Promise.all(emails.map((email) => register(new Request("http://localhost:3000/api/members/register", { method: "POST", headers: baseHeaders({ "x-real-ip": randomUUID() }), body: JSON.stringify({ email, username, password, website: "" }) }))));
     assert.deepEqual(responses.map((response) => response.status).sort(), [201, 409]);
     assert.equal(await prisma.memberProfile.count({ where: { usernameCanonical: username.toLowerCase() } }), 1);
     assert.equal(await prisma.user.count({ where: { email: { in: emails } } }), 1);

@@ -2,11 +2,12 @@ import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-type DevelopmentEmail = {
+export type DevelopmentEmail = {
   to: string;
   subject: string;
-  kind: "EMAIL_VERIFICATION" | "PASSWORD_RESET";
-  actionUrl: string;
+  kind: "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_RESET_SECURITY" | "ACCOUNT_SECURITY" | "ENCOUNTER_SUBMITTED" | "COMMUNITY_REPORT";
+  actionUrl?: string;
+  text?: string;
 };
 
 export async function deliverDevelopmentEmail(message: DevelopmentEmail) {

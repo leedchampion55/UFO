@@ -21,6 +21,33 @@ enum MediaType {
   IMAGE
 }
 
+enum MediaStorageStatus {
+  PENDING_UPLOAD
+  READY
+  FAILED
+  DELETING
+  REMOVED
+}
+
+enum EmailKind {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  PASSWORD_RESET_SECURITY
+  ACCOUNT_SECURITY
+  ENCOUNTER_SUBMITTED
+  COMMUNITY_REPORT
+}
+
+enum EmailOutboxStatus {
+  QUEUED
+  PROCESSING
+  ACCEPTED
+  DELIVERED
+  FAILED
+  DEAD_LETTER
+  SUPPRESSED
+}
+
 enum ModerationAction {
   SUBMITTED
   CREATED
@@ -151,8 +178,61 @@ model EncounterMedia {
   approvedByAdminId   String?
   approvedByAdmin     Administrator? @relation("ApprovedMedia", fields: [approvedByAdminId], references: [id], onDelete: SetNull)
   removedAt           DateTime?
+  storageStatus       MediaStorageStatus @default(PENDING_UPLOAD)
+  storageAttempts     Int            @default(0)
+  storageUpdatedAt    DateTime       @default(now())
+  storageEtag         String?
+  lastStorageError    String?
 
   @@index([encounterId, approvedAt, removedAt])
+  @@index([storageStatus, storageUpdatedAt])
+}
+
+model EmailOutbox {
+  id                String            @id @default(uuid())
+  kind              EmailKind
+  recipient         String
+  subject           String
+  payload           Json
+  status            EmailOutboxStatus @default(QUEUED)
+  idempotencyKey    String            @unique
+  providerMessageId String?           @unique
+  attemptCount      Int               @default(0)
+  maxAttempts       Int               @default(5)
+  nextAttemptAt     DateTime           @default(now())
+  lockedAt          DateTime?
+  lockedBy          String?
+  acceptedAt        DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  lastErrorCode     String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([lockedAt])
+  @@index([createdAt])
+}
+
+model EmailWebhookEvent {
+  id                String   @id @default(uuid())
+  providerEventId   String   @unique
+  providerMessageId String?
+  eventType         String
+  processedAt       DateTime @default(now())
+
+  @@index([providerMessageId, processedAt])
+}
+
+model EmailSuppression {
+  id                String   @id @default(uuid())
+  recipientHash     String   @unique
+  reason            String
+  providerMessageId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([createdAt])
 }
 
 model SubmissionContact {

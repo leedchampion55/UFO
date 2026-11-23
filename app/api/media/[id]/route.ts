@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const media = await prisma.encounterMedia.findUnique({ where: { id }, include: { encounter: { select: { status: true, deletedAt: true } } } });
-  if (!media || media.removedAt) return new Response("Not found", { status: 404 });
+  if (!media || media.removedAt || media.storageStatus !== "READY") return new Response("Not found", { status: 404 });
   const admin = await getAdminSession(request.headers);
   const isPublic = media.encounter.status === "PUBLISHED" && !media.encounter.deletedAt && Boolean(media.approvedAt);
   if (!admin && !isPublic) return new Response("Not found", { status: 404 });

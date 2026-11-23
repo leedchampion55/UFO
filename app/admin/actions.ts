@@ -6,8 +6,8 @@ import { z } from "zod";
 import { requireAdmin, requireStrongAdmin } from "@/lib/auth";
 import { createCaseReference, createStableSlug, parseVideoLinks } from "@/lib/encounters";
 import { prepareImages } from "@/lib/media";
+import { deleteMediaObject, uploadMediaObject } from "@/lib/media-lifecycle";
 import { prisma } from "@/lib/prisma";
-import { privateStorage } from "@/lib/storage";
 
 const editSchema = z.object({
   id: z.string().uuid(),
@@ -68,7 +68,7 @@ export async function moderateEncounter(formData: FormData) {
   await prisma.$transaction([
     prisma.encounter.update({ where: { id }, data: { status: next.status, publishedAt: intent === "publish" ? new Date() : intent === "unpublish" ? null : undefined } }),
     prisma.encounterModeration.create({ data: { encounterId: id, administratorId: administrator.id, action: next.action, previousStatus: existing.status, updatedStatus: next.status, reason } }),
-    ...(intent === "publish" ? [prisma.encounterMedia.updateMany({ where: { encounterId: id, removedAt: null }, data: { approvedAt: new Date(), approvedByAdminId: administrator.id } })] : []),
+    ...(intent === "publish" ? [prisma.encounterMedia.updateMany({ where: { encounterId: id, removedAt: null, storageStatus: "READY" }, data: { approvedAt: new Date(), approvedByAdminId: administrator.id } })] : []),
   ]);
   revalidatePath("/");
   revalidatePath("/encounters");
@@ -108,9 +108,10 @@ export async function uploadAdminMedia(formData: FormData) {
   const files = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
   const prepared = await prepareImages(files);
   for (const image of prepared) {
-    const storageKey = `encounters/${encounterId}/${image.id}.webp`;
-    await privateStorage.put(storageKey, image.buffer);
-    await prisma.encounterMedia.create({ data: { id: image.id, encounterId, storageKey, originalFileName: image.originalFileName, mimeType: image.mimeType, byteSize: image.buffer.byteLength, width: image.width, height: image.height, approvedAt: new Date(), approvedByAdminId: administrator.id, alternativeText: "Encounter evidence image" } });
+    const storageKey = `encounters/${image.id.slice(0, 2)}/${image.id}.webp`;
+    await prisma.encounterMedia.create({ data: { id: image.id, encounterId, storageKey, originalFileName: image.originalFileName, mimeType: image.mimeType, byteSize: image.buffer.byteLength, width: image.width, height: image.height, storageStatus: "PENDING_UPLOAD", alternativeText: "Encounter evidence image" } });
+    await uploadMediaObject(image.id, image.buffer, image.mimeType);
+    await prisma.encounterMedia.update({ where: { id: image.id }, data: { approvedAt: new Date(), approvedByAdminId: administrator.id } });
   }
   revalidatePath(`/admin/encounters/${encounterId}`);
 }
@@ -119,11 +120,11 @@ export async function removeMedia(formData: FormData) {
   const mediaId = z.string().uuid().parse(formData.get("mediaId"));
   const media = await prisma.encounterMedia.findUniqueOrThrow({ where: { id: mediaId } });
   const { administrator } = await requireStrongAdmin(`/admin/encounters/${media.encounterId}`);
-  await privateStorage.delete(media.storageKey);
   await prisma.$transaction([
-    prisma.encounterMedia.update({ where: { id: mediaId }, data: { removedAt: new Date(), approvedAt: null, approvedByAdminId: null } }),
+    prisma.encounterMedia.update({ where: { id: mediaId }, data: { storageStatus: "DELETING", storageUpdatedAt: new Date(), removedAt: new Date(), approvedAt: null, approvedByAdminId: null } }),
     prisma.encounterModeration.create({ data: { encounterId: media.encounterId, administratorId: administrator.id, action: "MEDIA_REMOVED", metadata: { mediaId } } }),
   ]);
+  await deleteMediaObject(mediaId).catch(() => undefined);
   revalidatePath(`/admin/encounters/${media.encounterId}`);
 }
 
@@ -131,12 +132,12 @@ export async function deleteEncounter(formData: FormData) {
   const id = z.string().uuid().parse(formData.get("id"));
   const { administrator } = await requireStrongAdmin(`/admin/encounters/${id}`);
   const existing = await prisma.encounter.findUniqueOrThrow({ where: { id }, include: { media: true } });
-  await Promise.all(existing.media.map((item) => privateStorage.delete(item.storageKey).catch(() => undefined)));
   await prisma.$transaction([
     prisma.submissionContact.deleteMany({ where: { encounterId: id } }),
-    prisma.encounterMedia.updateMany({ where: { encounterId: id }, data: { removedAt: new Date(), approvedAt: null, approvedByAdminId: null } }),
+    prisma.encounterMedia.updateMany({ where: { encounterId: id }, data: { storageStatus: "DELETING", storageUpdatedAt: new Date(), removedAt: new Date(), approvedAt: null, approvedByAdminId: null } }),
     prisma.encounter.update({ where: { id }, data: { status: "DELETED", deletedAt: new Date(), title: "Deleted encounter", storyContent: "", originalStoryContent: "", summary: null, publicDisplayName: null, approximateLocation: null } }),
     prisma.encounterModeration.create({ data: { encounterId: id, administratorId: administrator.id, action: "DELETED", previousStatus: existing.status, updatedStatus: "DELETED" } }),
   ]);
+  await Promise.all(existing.media.map((item) => deleteMediaObject(item.id).catch(() => undefined)));
   redirect("/admin");
 }
