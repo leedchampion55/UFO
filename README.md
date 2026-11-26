@@ -164,7 +164,7 @@ Contributor removal continues to unpublish immediately and erase private contact
 
 ## Deployment and operations
 
-Railway, Neon, CI, maintenance, backup/restore, monitoring, staging, rollback and incident instructions are in [docs/OPERATIONS.md](docs/OPERATIONS.md). `railway.json` configures Railpack, a reproducible `npm ci` build, `/health/ready`, and bounded restarts; it does not deploy anything or contain credentials.
+Railway, Neon, CI, maintenance, backup/restore, monitoring, staging, rollback and incident instructions are in [docs/OPERATIONS.md](docs/OPERATIONS.md). The provider-specific, approval-gated staging preflight and complete environment inventory are in [docs/STAGING.md](docs/STAGING.md). `railway.json` configures Railpack, a reproducible `npm ci` build, `/health/ready`, and bounded restarts; it does not deploy anything or contain credentials.
 
 `/health/live` proves only that the process responds. `/health/ready` performs one lightweight database query with a two-second application timeout and returns a generic 503 on failure. Neither endpoint exposes configuration, database identifiers or internal error text. Use readiness for Railway deployment activation and liveness for independent uptime monitoring.
 
