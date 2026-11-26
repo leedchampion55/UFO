@@ -136,7 +136,7 @@ jobs:
             -c 'CREATE TABLE backup_probe (id integer PRIMARY KEY, marker text NOT NULL)' \
             -c "INSERT INTO backup_probe VALUES (1, 'synthetic-container-backup')"
 
-          docker run --rm --network host \
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
             -e BACKUP_DATABASE_URL=postgresql://ufo_backup@127.0.0.1:5432/ufo_backup_source \
             -e BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_PASSPHRASE" \
             -e DATABASE_BACKUP_DRIVER=local \
