@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { processEmailOutbox } from "@/lib/email/outbox";
-import { validateRuntimeEnvironment } from "@/lib/env";
+import { validateServiceEnvironment } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { withOperationLease } from "@/lib/operations/lease";
 import { operationalLog } from "@/lib/operations/logger";
 
 const watch = process.argv.includes("--watch");
-validateRuntimeEnvironment();
+validateServiceEnvironment("email-worker");
 
 let stopping = false;
 let active: Promise<void> | null = null;

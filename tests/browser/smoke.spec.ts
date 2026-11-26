@@ -16,6 +16,10 @@ let encounterId = "";
 let mediaId = "";
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 
+function stagingGatewayHeaders() {
+  return { authorization: `Basic ${Buffer.from(`${process.env.STAGING_ACCESS_USERNAME}:${process.env.STAGING_ACCESS_PASSWORD}`).toString("base64")}` };
+}
+
 function decodeBase32(value: string) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = "";
   for (const character of value.replace(/=+$/, "").toUpperCase()) bits += alphabet.indexOf(character).toString(2).padStart(5, "0");
@@ -40,6 +44,16 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await pool.end(); });
 
 test.describe.serial("production journey smoke tests", () => {
+  test("staging gateway blocks anonymous traffic but leaves exact operational exceptions", async () => {
+    const origin = "http://127.0.0.1:3100";
+    expect((await fetch(`${origin}/`)).status).toBe(401);
+    expect((await fetch(`${origin}/api/encounters`, { method: "POST", body: new FormData() })).status).toBe(401);
+    expect((await fetch(`${origin}/health/live`)).status).toBe(200);
+    expect((await fetch(`${origin}/health/ready`)).status).toBe(200);
+    expect((await fetch(`${origin}/api/webhooks/resend`)).status).toBe(401);
+    expect((await fetch(`${origin}/api/webhooks/resend`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } })).status).toBe(400);
+  });
+
   test("homepage, artwork, navigation, archive and health load", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -62,7 +76,7 @@ test.describe.serial("production journey smoke tests", () => {
     const encounter = await pool.query<{ id: string; status: string; mediaId: string }>('SELECT e.id, e.status, m.id AS "mediaId" FROM "Encounter" e JOIN "EncounterMedia" m ON m."encounterId" = e.id WHERE e.title = $1', [encounterTitle]);
     encounterId = encounter.rows[0]!.id; mediaId = encounter.rows[0]!.mediaId;
     expect(encounter.rows[0]!.status).toBe("PENDING");
-    expect((await fetch(`http://127.0.0.1:3100/api/media/${mediaId}`)).status).toBe(404);
+    expect((await fetch(`http://127.0.0.1:3100/api/media/${mediaId}`, { headers: stagingGatewayHeaders() })).status).toBe(404);
   });
 
   test("administrator MFA, review, publication and unpublishing revocation work", async ({ page }) => {
@@ -74,7 +88,7 @@ test.describe.serial("production journey smoke tests", () => {
     expect((await page.request.get(`/api/media/${mediaId}`)).status()).toBe(200);
     await page.getByRole("button", { name: "Unpublish" }).click();
     await expect.poll(async () => (await pool.query<{ status: string }>('SELECT status::text FROM "Encounter" WHERE id = $1', [encounterId])).rows[0]!.status).toBe("UNPUBLISHED");
-    expect((await fetch(`http://127.0.0.1:3100/api/media/${mediaId}`)).status).toBe(404);
+    expect((await fetch(`http://127.0.0.1:3100/api/media/${mediaId}`, { headers: stagingGatewayHeaders() })).status).toBe(404);
   });
 
   test("member registration, local verification and Mothership publishing work", async ({ browser }) => {

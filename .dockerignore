@@ -1,0 +1,15 @@
+.git
+.github
+.next
+.data
+node_modules
+coverage
+test-results
+playwright-report
+.env
+.env.*
+*.log
+*.db
+*.sqlite*
+uploads
+public/uploads

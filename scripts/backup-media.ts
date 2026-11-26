@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { validateServiceEnvironment } from "@/lib/env";
 import { backupPrivateMedia } from "@/lib/storage/backup";
 import { backupStorageFromEnvironment } from "@/lib/storage/backup-environment";
 import { privateStorage } from "@/lib/storage";
@@ -6,6 +7,7 @@ import { operationalLog } from "@/lib/operations/logger";
 import { withOperationLease } from "@/lib/operations/lease";
 import { prisma } from "@/lib/prisma";
 
+validateServiceEnvironment("media-backup");
 const apply = process.argv.includes("--apply");
 const leased = await withOperationLease("private-media-backup", () => backupPrivateMedia(privateStorage, backupStorageFromEnvironment(), { dryRun: !apply }), { ttlSeconds: 3_600 });
 if (!leased.acquired) operationalLog("info", "media.backup_skipped", { reason: "LEASE_HELD" });

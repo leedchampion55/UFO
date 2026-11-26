@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
+    // The optimizer performs a server-side fetch that cannot forward the
+    // browser's separate staging-gateway credential. Keep source assets behind
+    // the gateway by letting the authenticated browser request them directly.
+    unoptimized: process.env.APP_ENVIRONMENT === "staging",
   },
   experimental: {
     serverActions: {

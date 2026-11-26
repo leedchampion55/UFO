@@ -2,7 +2,7 @@
 
 A cinematic Cornish paranormal archive with moderated encounter publishing, free member accounts, encounter comments and The Mothership community forum.
 
-Phase 4D is a security-hardened, local-first application with production-capable Resend email and private Cloudflare R2 adapters plus Railway/Neon configuration, CI, health checks, distributed maintenance leases, encrypted backup drills and browser smoke tests. It is not deployed and no external account is required for local development.
+Phase 4S.1 is a security-hardened, local-first application with production-capable Resend email and private Cloudflare R2 adapters, an authenticated staging gateway, least-privilege service configuration, durable encrypted database-backup storage, Railway/Neon configuration, CI, health checks, distributed maintenance leases and browser smoke tests. It is not deployed and no external account is required for local development.
 
 ## Requirements
 
@@ -166,13 +166,15 @@ Contributor removal continues to unpublish immediately and erase private contact
 
 Railway, Neon, CI, maintenance, backup/restore, monitoring, staging, rollback and incident instructions are in [docs/OPERATIONS.md](docs/OPERATIONS.md). The provider-specific, approval-gated staging preflight and complete environment inventory are in [docs/STAGING.md](docs/STAGING.md). `railway.json` configures Railpack, a reproducible `npm ci` build, `/health/ready`, and bounded restarts; it does not deploy anything or contain credentials.
 
+Hosted staging is fail-closed behind separate HTTP gateway credentials configured with `APP_ENVIRONMENT=staging`, `STAGING_ACCESS_ENABLED=true`, `STAGING_ACCESS_USERNAME` and a random `STAGING_ACCESS_PASSWORD` of at least 32 characters. Only exact GET liveness/readiness checks and the signed Resend webhook POST are exempt. These credentials are not member or administrator credentials and must be supplied only to the web service and authorised browser tests.
+
 `/health/live` proves only that the process responds. `/health/ready` performs one lightweight database query with a two-second application timeout and returns a generic 503 on failure. Neither endpoint exposes configuration, database identifiers or internal error text. Use readiness for Railway deployment activation and liveness for independent uptime monitoring.
 
 The operator-only `PUBLIC_SUBMISSIONS_ENABLED=false` switch rejects new encounter submissions before request-body parsing and replaces the public form with a clear paused state. It does not affect existing content or community access. Railway/proxy request-size and slow-client controls are still required because application code cannot prevent upstream buffering.
 
 ## Database and migrations
 
-Prisma migrations live in `prisma/migrations`. Phase 4D adds only `OperationalLease`, used to serialize maintenance across application instances and recover automatically after lease expiry. `DATABASE_URL` is the pooled application URL; `DIRECT_URL` is the direct migration URL. Production validation requires TLS on both and rejects a pooled Neon endpoint in `DIRECT_URL`. Run `prisma migrate deploy` exactly once as a controlled release job before activating the web release—never in every replica start command.
+Prisma migrations live in `prisma/migrations`. Phase 4D adds only `OperationalLease`, used to serialize maintenance across application instances and recover automatically after lease expiry. `DATABASE_URL` is the pooled application URL; `DIRECT_URL` is the direct migration URL. Hosted validation requires TLS on both and rejects a pooled Neon endpoint in `DIRECT_URL`. The web and worker must not receive `DIRECT_URL`; `npm run db:migrate` validates a migration-only environment before running Prisma exactly once as a controlled release job—never in every replica start command.
 
 Useful commands:
 

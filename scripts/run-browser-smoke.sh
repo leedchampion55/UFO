@@ -10,11 +10,18 @@ name="ufo_browser_test_$(date +%s)_$$"
 runtime_directory="$(mktemp -d)"
 cp next-env.d.ts "$runtime_directory/next-env.d.ts"
 cp tsconfig.json "$runtime_directory/tsconfig.json"
+mkdir "$runtime_directory/stale-next-types"
+for generated_file in .next/types/*\ [0-9]*.ts; do
+  if [[ -e "$generated_file" ]]; then mv "$generated_file" "$runtime_directory/stale-next-types/"; fi
+done
 cleanup() {
   dropdb --if-exists --maintenance-db="$admin_url" "$name" >/dev/null 2>&1 || true
   rm -rf ".data/browser-next-${name}"
   cp "$runtime_directory/next-env.d.ts" next-env.d.ts
   cp "$runtime_directory/tsconfig.json" tsconfig.json
+  for generated_file in "$runtime_directory/stale-next-types"/*; do
+    if [[ -e "$generated_file" ]]; then mv "$generated_file" .next/types/; fi
+  done
   rm -rf "$runtime_directory"
 }
 trap cleanup EXIT
@@ -25,6 +32,10 @@ export DIRECT_URL="$database_url"
 export BETTER_AUTH_URL="http://127.0.0.1:3100"
 export NEXT_PUBLIC_APP_URL="http://127.0.0.1:3100"
 export APP_RUNTIME_MODE="local"
+export APP_ENVIRONMENT="staging"
+export STAGING_ACCESS_ENABLED="true"
+export STAGING_ACCESS_USERNAME="browser-staging-operator"
+export STAGING_ACCESS_PASSWORD="browser-only-staging-gateway-password"
 export TRUSTED_PROXY_MODE="local"
 export STORAGE_DRIVER="local"
 export PRIVATE_MEDIA_ROOT="$runtime_directory/private-media"

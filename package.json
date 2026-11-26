@@ -17,7 +17,7 @@
     "db:start": "bash scripts/local-db.sh start",
     "db:stop": "bash scripts/local-db.sh stop",
     "db:status": "bash scripts/local-db.sh status",
-    "db:migrate": "prisma migrate deploy",
+    "db:migrate": "tsx scripts/validate-service-environment.ts migration && prisma migrate deploy",
     "db:generate": "prisma generate",
     "admin:create": "tsx scripts/create-admin.ts",
     "security:cleanup-rate-limits": "tsx scripts/cleanup-rate-limits.ts",
@@ -31,6 +31,8 @@
     "media:restore": "tsx scripts/restore-media.ts",
     "ops:backup-db": "bash scripts/backup-postgres.sh",
     "ops:restore-db": "bash scripts/restore-postgres.sh",
+    "ops:backup-retention": "tsx scripts/database-backup-object.ts cleanup",
+    "ops:fetch-db-backup": "tsx scripts/database-backup-object.ts download",
     "ops:test-backup": "bash scripts/test-backup-restore.sh",
     "ops:test-migrations": "bash scripts/test-disposable-migrations.sh",
     "test:browser": "bash scripts/run-browser-smoke.sh",
@@ -54,6 +56,7 @@
     "react-dom": "19.3.1",
     "resend": "6.39.0",
     "sharp": "latest",
+    "standardwebhooks": "1.3.0",
     "zod": "latest"
   },
   "devDependencies": {
@@ -66,7 +69,6 @@
     "eslint": "latest",
     "eslint-config-next": "16.4.6",
     "prisma": "7.10.1",
-    "standardwebhooks": "1.3.0",
     "tailwindcss": "4.3.5",
     "tsx": "latest",
     "typescript": "latest"

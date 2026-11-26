@@ -77,11 +77,11 @@ describe("Phase 4C email and private storage", { concurrency: false }, () => {
     await prisma.$disconnect();
   });
 
-  it("accepts complete production Resend and R2 configuration and rejects local providers", () => {
-    const base = { ...process.env, NODE_ENV: "production", APP_RUNTIME_MODE: "production", BETTER_AUTH_URL: "https://ufo.test", NEXT_PUBLIC_APP_URL: "https://ufo.test", DATABASE_URL: "postgresql://ufo@ep-ufo-pooler.eu-west-2.aws.neon.tech/ufo?sslmode=require", DIRECT_URL: "postgresql://ufo@ep-ufo.eu-west-2.aws.neon.tech/ufo?sslmode=require", TRUSTED_PROXY_MODE: "railway", EMAIL_DRIVER: "resend", STORAGE_DRIVER: "r2", RESEND_API_KEY: `re_${"a".repeat(32)}`, RESEND_FROM: "What the UFO?! <no-reply@notify.ufo.test>", RESEND_SENDING_DOMAIN: "notify.ufo.test", RESEND_WEBHOOK_SECRET: `whsec_${"b".repeat(32)}`, ADMIN_NOTIFICATION_EMAIL: "operator@ufo.test", R2_ENDPOINT: "https://0123456789abcdef.r2.cloudflarestorage.com", R2_BUCKET: "ufo-private-evidence", R2_ACCESS_KEY_ID: "a1b2c3d4e5f6", R2_SECRET_ACCESS_KEY: "c".repeat(40), R2_REGION: "auto", R2_FORCE_PATH_STYLE: "false" } satisfies NodeJS.ProcessEnv;
+  it("accepts complete production webhook and R2 configuration and rejects local providers", () => {
+    const base = { ...process.env, NODE_ENV: "production", APP_RUNTIME_MODE: "production", APP_ENVIRONMENT: "production", BETTER_AUTH_URL: "https://ufo.test", NEXT_PUBLIC_APP_URL: "https://ufo.test", DATABASE_URL: "postgresql://ufo@ep-ufo-pooler.eu-west-2.aws.neon.tech/ufo?sslmode=require", DIRECT_URL: undefined, TRUSTED_PROXY_MODE: "railway", EMAIL_DRIVER: "resend", STORAGE_DRIVER: "r2", RESEND_API_KEY: undefined, RESEND_FROM: undefined, RESEND_SENDING_DOMAIN: undefined, RESEND_WEBHOOK_SECRET: `whsec_${"b".repeat(32)}`, ADMIN_NOTIFICATION_EMAIL: "operator@ufo.test", R2_ENDPOINT: "https://0123456789abcdef.r2.cloudflarestorage.com", R2_BUCKET: "ufo-private-evidence", R2_ACCESS_KEY_ID: "a1b2c3d4e5f6", R2_SECRET_ACCESS_KEY: "c".repeat(40), R2_REGION: "auto", R2_FORCE_PATH_STYLE: "false" } satisfies NodeJS.ProcessEnv;
     assert.equal(validateRuntimeEnvironment(base).STORAGE_DRIVER, "r2");
     assert.throws(() => validateRuntimeEnvironment({ ...base, STORAGE_DRIVER: "local" }), /production requires/);
-    assert.throws(() => validateRuntimeEnvironment({ ...base, EMAIL_DRIVER: "development" }), /production requires/);
+    assert.throws(() => validateRuntimeEnvironment({ ...base, EMAIL_DRIVER: "development" }), /webhook and notification configuration/);
   });
 
   it("keeps the development mailbox inaccessible when Next.js runs in production", async () => {

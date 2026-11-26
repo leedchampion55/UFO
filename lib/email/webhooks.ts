@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import { Webhook } from "standardwebhooks";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { recipientHash } from "./outbox";
@@ -11,8 +11,12 @@ const eventSchema = z.object({
 export type ResendWebhookEvent = z.infer<typeof eventSchema>;
 
 export function verifyResendWebhook(payload: string, headers: { id: string; timestamp: string; signature: string }, environment: NodeJS.ProcessEnv = process.env) {
-  if (!environment.RESEND_API_KEY || !environment.RESEND_WEBHOOK_SECRET) throw new Error("RESEND_WEBHOOK_CONFIGURATION_MISSING");
-  const result = new Resend(environment.RESEND_API_KEY).webhooks.verify({ payload, headers, webhookSecret: environment.RESEND_WEBHOOK_SECRET });
+  if (!environment.RESEND_WEBHOOK_SECRET) throw new Error("RESEND_WEBHOOK_CONFIGURATION_MISSING");
+  const result = new Webhook(environment.RESEND_WEBHOOK_SECRET).verify(payload, {
+    "webhook-id": headers.id,
+    "webhook-timestamp": headers.timestamp,
+    "webhook-signature": headers.signature,
+  });
   return eventSchema.parse(result);
 }
 

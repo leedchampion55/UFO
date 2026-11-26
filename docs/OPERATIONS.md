@@ -35,7 +35,7 @@ If migration application fails, stop the release and preserve logs. Do not reset
 
 ## Worker and maintenance services
 
-Use one private Railway worker service with the same image and variables as the web service, but start it with `npm run email:worker`. It has no public domain. Atomic row claims, Resend idempotency keys, the global worker lease, ten-minute stale message-lock recovery and graceful SIGTERM handling minimize duplicate delivery. Delivery is still at-least-once across an upstream timeout; provider idempotency is part of the guarantee.
+Use one private Railway worker service with the same application image but a **separate least-privilege variable set**, and start it with `npm run email:worker`. It has no public domain or inherited web health check. It receives the pooled database URL, pool settings, rate-limit pseudonymisation secret and Resend sending settings only—not Better Auth, `DIRECT_URL`, R2, webhook, administrator-notification or backup secrets. Atomic row claims, Resend idempotency keys, the global worker lease, ten-minute stale message-lock recovery and graceful SIGTERM handling minimize duplicate delivery. Delivery is still at-least-once across an upstream timeout; provider idempotency is part of the guarantee.
 
 Recommended schedules:
 
@@ -55,18 +55,22 @@ All jobs use PostgreSQL `OperationalLease` records, so a second instance skips r
 
 Targets are RPO ≤24 hours and RTO ≤4 hours. Neon snapshots/PITR are one layer; keep a daily independent logical export.
 
-`npm run ops:backup-db` runs `pg_dump` in custom format, validates it with `pg_restore --list`, encrypts it with AES-256-CBC/PBKDF2, writes a SHA-256 checksum and never prints the URL or passphrase. Supply `BACKUP_DATABASE_URL`, `BACKUP_DESTINATION`, `BACKUP_RETENTION_DAYS` and `BACKUP_ENCRYPTION_PASSPHRASE` at runtime. The script lists expired files but deliberately does not delete them; approve retention before adding deletion automation.
+`npm run ops:backup-db` runs `pg_dump` in custom format, validates it with `pg_restore --list`, encrypts it with AES-256-CBC/PBKDF2, and uploads it to a private local or R2-compatible destination. The SHA-256 object is written last as the commit marker, then both objects are read back and verified. An incomplete or failed upload is removed and reported with a safe code. Supply `BACKUP_DATABASE_URL`, `BACKUP_ENCRYPTION_PASSPHRASE` and the dedicated `DATABASE_BACKUP_*` destination settings at runtime. The web and email worker must never receive these values.
+
+Build the Railway database-backup job with `Dockerfile.backup`, not Railpack. It combines Node.js 22 with PostgreSQL 16 `pg_dump`/`pg_restore` and verifies the required tool versions during image build. It has no public domain or web health check. `npm run ops:backup-retention` is a dry run; add `-- --apply` only after reviewing the exact object count and approving retention.
 
 Restore only into an isolated empty database:
 
 ```bash
 RESTORE_DATABASE_URL="postgresql://.../isolated_restore?sslmode=require" \
-RESTORE_BACKUP_FILE="/restricted/what-the-ufo-YYYYMMDD.dump.enc" \
+RESTORE_BACKUP_KEY="database/what-the-ufo-YYYYMMDDTHHMMSSZ.dump.enc" \
+RESTORE_CONFIRM_ISOLATED_DATABASE="true" \
+DATABASE_BACKUP_DRIVER="r2" \
 BACKUP_ENCRYPTION_PASSPHRASE="from-the-secrets-manager" \
 npm run ops:restore-db
 ```
 
-The restore script validates the encrypted checksum, decrypts to a mode-700 temporary directory, validates the archive, restores without ownership/privilege statements and runs `SELECT 1`. It refuses a target equal to either live application URL. `npm run ops:test-backup` performs a real local source→encrypted backup→separate restore marker drill using two disposable databases.
+The restore script downloads the exact private key, validates its commit marker and checksum, decrypts in a mode-700 temporary directory, validates the archive, restores without ownership/privilege statements and runs `SELECT 1`. It requires explicit isolated-target confirmation and refuses a target equal to the runtime, migration or backup-source URL. `npm run ops:test-backup` performs a real local source→encrypted object transfer→retrieval→separate restore marker drill using two disposable databases, and tests both restore guards.
 
 Production destinations, Neon snapshots, encryption-key escrow, alert delivery and real cloud RTO remain unverified until provider resources exist. Test a production-format restore monthly and record duration/result.
 
@@ -87,6 +91,8 @@ Alerts should cover: liveness failure >5 minutes, readiness/database failure >2 
 ## Isolated staging
 
 Staging requires separate Railway web/worker services, Neon project/branch, private R2 live and backup buckets, Resend configuration/sending subdomain, secrets and monitoring project. Use synthetic accounts, encounters and images only. Never clone production personal data. Display a clear staging identity and keep it out of search indexing. Do not reuse production cookies, auth secret, MFA seeds, provider keys or canonical origins.
+
+Before creating a public Railway domain, configure `APP_ENVIRONMENT=staging`, `STAGING_ACCESS_ENABLED=true`, a distinct gateway username, and a random gateway password of at least 32 characters. The Next.js proxy protects all pages, forms, API routes and assets. Only exact `GET /health/live`, exact `GET /health/ready`, and signed `POST /api/webhooks/resend` bypass the gateway. Hosted staging must use HTTPS. Noindex headers are emitted as defence in depth, not as the security boundary.
 
 Run the full CI and browser suite, provider smoke messages, R2 publish/unpublish access checks, migration drill, backup restore and rollback rehearsal before promotion. No staging resource is configured by this repository.
 

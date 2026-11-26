@@ -3,6 +3,7 @@
 **Prepared:** 26 November 2026  
 **Source checkpoint:** `86507e86fbc86befda20e21ac80f50a0eaef137b` (`phase-4d-complete`)  
 **Preparation branch:** `codex/phase-4s-staging`
+**Hardening branch:** `codex/phase-4s-staging-hardening`
 
 This is a preparation document, not evidence of a deployment. No Railway, Neon, Cloudflare R2 or Resend account, resource, credential, DNS record or public staging URL has been created or connected.
 
@@ -17,15 +18,15 @@ The application can run on the proposed staging stack:
 
 Node.js 22, `next start`, Prisma 7 with the PostgreSQL adapter, Better Auth, Sharp, the R2 S3 adapter and Resend API client are compatible with a conventional Railway Node service. The checked-in `railway.json` uses Railpack, `npm ci && npm run build`, `npm run start`, `/health/ready`, a 120-second activation timeout and bounded restart policy. The email worker is `npm run email:worker`; migrations are `npm run db:migrate` and must run once in a controlled job.
 
-### Activation blockers requiring approval for a code/configuration change
+### Phase 4S.1 blocker resolution
 
-Do not expose staging until these are resolved and tested:
+The three code/configuration blockers are implemented and locally verified:
 
-1. **Authenticated staging barrier.** The repository has no staging access gateway. Add an application-level barrier enabled only by an explicit staging environment value. Protect every route except `GET /health/live`, `GET /health/ready` and the exact signed `POST /api/webhooks/resend` endpoint. Require HTTPS, constant-time credential comparison, a rate-limited challenge and sealed Railway-only credentials. Add `X-Robots-Tag: noindex, nofollow, noarchive` and a visible staging banner as defence in depth; neither is an access control.
-2. **Service-specific environment validation and least privilege.** `validateRuntimeEnvironment()` currently requires `DIRECT_URL`, Better Auth, R2 and Resend configuration in every production-mode process. That would give the web and worker a direct migration credential and give the email worker unrelated R2 secrets. Split validation by role (`web`, `email-worker`, `maintenance`, `migration`) so each service receives only what it uses. The web needs the pooled database URL, auth, email/webhook and live R2 settings; the worker needs the pooled URL, rate-limit pseudonymisation secret and Resend settings; the migration job alone receives `DIRECT_URL`.
-3. **Durable logical-backup destination.** `ops:backup-db` creates an encrypted file on local disk and assumes `pg_dump`, `pg_restore`, `openssl` and `shasum` are installed. Railway ephemeral storage is not a backup destination, and the current Railpack definition does not prove the PostgreSQL tools are present. Use a purpose-built private backup job image and upload encrypted output to a separate restricted bucket, or run the initial staging drill from a trusted operator machine. Verify download and isolated restoration before calling the backup operational.
+1. **Authenticated staging barrier.** Next.js `proxy.ts` challenges every staging route and asset with separate HTTP Basic credentials. It uses fixed-length digest comparison and fails closed when staging protection is incomplete. The only unauthenticated exceptions are exact `GET /health/live`, exact `GET /health/ready`, and exact `POST /api/webhooks/resend`. The webhook still requires its signed raw payload; no `/api`, auth or admin group is exempt. Every staging response receives `X-Robots-Tag: noindex, nofollow, noarchive`.
+2. **Service-specific least privilege.** Web, email worker, email/rate-limit maintenance, media maintenance, media backup, migration and database-backup roles validate distinct environment contracts. Hosted processes reject privileged variables belonging to another role. The web no longer receives `DIRECT_URL` or the Resend sending API key; the webhook verifier uses only its signing secret. The worker receives no auth, R2, migration, webhook or administrator-notification credential.
+3. **Durable logical backups.** The backup creates a PostgreSQL custom archive, validates it, encrypts it with AES-256-CBC/PBKDF2, and uploads it plus a SHA-256 commit marker to a separate local or R2-compatible private object store. Upload is read-back verified; incomplete and corrupt objects are rejected. Retention is dry-run by default. Restoration requires explicit isolated-target confirmation and refuses URLs matching runtime, migration or backup sources. `Dockerfile.backup` combines Node 22 with PostgreSQL 16 client tools.
 
-These are independent of the existing site design and public functionality. No fix was applied during this preflight.
+Local verification does not prove Railway gateway behaviour, Neon permissions, R2 bucket policy or real cloud restore time. Do not expose staging until the same controls pass the acceptance procedure against isolated provider resources.
 
 ### Configuration warnings to validate in the provider dashboard
 
@@ -56,7 +57,7 @@ Do these steps only after the owner approves resource activation and the access-
 | Media reconciliation | Hourly | `npm run media:reconcile`; dry run |
 | Failed-deletion retry | Hourly | `npm run media:retry-deletions`; inspect before any `--apply` |
 | Evidence backup | Daily | `npm run media:backup -- --apply`; only after backup R2 is verified |
-| Logical database backup | Daily | Do not schedule until the durable backup-job blocker above is resolved |
+| Logical database backup | Daily | Dedicated `Dockerfile.backup`; `npm run ops:backup-db` to a private R2-compatible destination |
 
 9. Set usage alerts at 50%, 80% and 100% of the approved monthly ceiling. Use a project limit low enough that an accidental worker loop cannot create an open-ended bill.
 10. Give the public web service the exact staging gateway exception set only. The worker and maintenance jobs remain private.
@@ -116,8 +117,9 @@ The Railway domain is an internet endpoint even when it is not advertised. The a
 
 Recommended first implementation:
 
-- Introduce `APP_ENVIRONMENT=staging` and `STAGING_ACCESS_ENABLED=true`.
-- Require sealed, high-entropy staging access credentials at the application proxy for all staging traffic.
+- Set `APP_ENVIRONMENT=staging` and `STAGING_ACCESS_ENABLED=true`; startup fails if the remaining gateway configuration is incomplete.
+- Supply a 3–64 character username without `:` and a separate password of at least 32 characters through sealed Railway variables.
+- The application proxy uses HTTP Basic authentication for all staging traffic. HTTPS is mandatory in hosted mode; never reuse member, administrator or provider credentials.
 - Exempt only `GET /health/live`, `GET /health/ready` and signed `POST /api/webhooks/resend`. Method and exact path are part of each exception.
 - Do not exempt registration, submissions, admin routes, media routes, Next.js data endpoints or arbitrary `/api` paths.
 - Browser smoke tests supply access credentials from their own sealed test environment.
@@ -131,23 +133,23 @@ If a project-owned domain is later placed behind Cloudflare Access, it can repla
 
 Values below are names and handling rules only. Never place actual secrets in this file, tickets, logs or chat.
 
-Service codes: **W** web, **E** email worker, **M** maintenance, **G** migration job, **B** backup/restore job. The table describes the least-privilege target after service-specific validation is implemented.
+Service codes: **W** web, **E** email worker, **M** maintenance, **G** migration job, **B** backup/restore job. These are enforced service-role contracts, not suggested variable groupings.
 
 | Name | Purpose / supplier | Secret | Services | Must differ in production | Verification |
 |---|---|:---:|---|:---:|---|
 | `NODE_ENV` | Runtime mode; Railway/build | No | W E M | No | Exactly `production` in cloud |
 | `APP_RUNTIME_MODE` | Enables production validation | No | W E M | No | `production`; never `local` |
-| `APP_ENVIRONMENT` | Proposed staging identity/gate selector | No | W | Yes | Exactly `staging` |
-| `NEXT_PUBLIC_APP_URL` | Canonical HTTPS staging origin | No/public | W E | Yes | Equals generated staging origin; browser metadata/links work |
+| `APP_ENVIRONMENT` | Staging identity/gate selector | No | W | Yes | Exactly `staging` |
+| `NEXT_PUBLIC_APP_URL` | Canonical HTTPS staging origin | No/public | W | Yes | Equals generated staging origin; browser metadata/links work |
 | `BETTER_AUTH_URL` | Better Auth canonical origin | No | W | Yes | Exactly equals `NEXT_PUBLIC_APP_URL` |
 | `TRUSTED_APP_ORIGINS` | Optional extra exact origins | No | W | Yes | Empty unless a reviewed exact origin is required |
 | `BETTER_AUTH_SECRET` | Sessions and encrypted MFA material; operator-generated | Yes | W | Yes | At least 32 random bytes; distinct; login/MFA succeeds |
 | `RATE_LIMIT_SECRET` | Pseudonymises rate-limit/email keys; operator-generated | Yes | W E | Yes | At least 32 random bytes and not auth secret |
 | `TRUSTED_PROXY_MODE` | Railway client-IP trust policy | No | W | No | `railway`; spoofed forwarding test passes |
 | `PUBLIC_SUBMISSIONS_ENABLED` | Emergency encounter-submission switch | No | W | Environment decision | `true` for acceptance; `false` returns safe 503 |
-| `STAGING_ACCESS_ENABLED` | Proposed access barrier switch | No | W | Staging only | `true`; unauthenticated routes rejected |
-| `STAGING_ACCESS_USERNAME` | Proposed staging gateway identity | Sensitive | W | Staging only | Sealed; never logged |
-| `STAGING_ACCESS_PASSWORD` | Proposed high-entropy gateway secret | Yes | W/browser CI | Staging only | Sealed; wrong credential rejected/rate-limited |
+| `STAGING_ACCESS_ENABLED` | Access barrier switch | No | W | Staging only | `true`; unauthenticated routes rejected |
+| `STAGING_ACCESS_USERNAME` | Staging gateway identity | Sensitive | W | Staging only | Sealed; never logged; no colon |
+| `STAGING_ACCESS_PASSWORD` | High-entropy gateway secret | Yes | W/browser CI | Staging only | Sealed; at least 32 characters; wrong credential rejected |
 | `DATABASE_URL` | Neon pooled runtime URL | Yes | W E M | Yes | `-pooler` host, `sslmode=require`, readiness succeeds |
 | `DIRECT_URL` | Neon direct migration URL | Yes | G only | Yes | Non-pooler host, TLS, migration status succeeds |
 | `DATABASE_POOL_MAX` | Per-process pg pool ceiling | No | W E M | Tune | Start `5`; total stays within Neon limit |
@@ -162,7 +164,7 @@ Service codes: **W** web, **E** email worker, **M** maintenance, **G** migration
 | `R2_REGION` | R2 S3 region | No | W M | No | `auto` |
 | `R2_FORCE_PATH_STYLE` | S3 addressing mode | No | W M | No | `false` |
 | `EMAIL_DRIVER` | Selects production email adapter | No | W E | No | `resend`; development mailbox remains 404 |
-| `RESEND_API_KEY` | Resend API credential | Yes | E and W webhook* | Yes | Test send accepted; key never logged |
+| `RESEND_API_KEY` | Resend sending credential | Yes | E only | Yes | Test send accepted; absent from web; key never logged |
 | `RESEND_FROM` | Verified staging sender | No | E | Yes | Address belongs to configured verified domain |
 | `RESEND_SENDING_DOMAIN` | Verified transactional domain | No | E | Yes | Matches sender domain |
 | `RESEND_WEBHOOK_SECRET` | Signed webhook verification | Yes | W | Yes | Valid event accepted; forged/replay handling verified |
@@ -175,12 +177,21 @@ Service codes: **W** web, **E** email worker, **M** maintenance, **G** migration
 | `MEDIA_BACKUP_R2_REGION` | Backup R2 region | No | B | No | `auto` |
 | `MEDIA_BACKUP_R2_FORCE_PATH_STYLE` | Backup S3 addressing | No | B | No | `false` |
 | `BACKUP_DATABASE_URL` | Direct/read-capable logical export URL | Yes | B | Yes | `pg_dump` succeeds without schema mutation rights |
-| `BACKUP_DESTINATION` | Encrypted temporary/durable path | Sensitive | B | Yes | Durable upload and checksum verified; not ephemeral only |
-| `BACKUP_RETENTION_DAYS` | Lists expired backups | No | B | Policy decision | Start `30`; script does not delete automatically |
+| `DATABASE_BACKUP_DRIVER` | Logical-backup destination selector | No | B | No | `r2` in hosted staging; `local` only for drills |
+| `DATABASE_BACKUP_ROOT` | Ignored local object-store root | Sensitive path | B/local | Local only | Used only by disposable drills |
+| `DATABASE_BACKUP_R2_ENDPOINT` | Private backup EU endpoint | No | B | Yes | EU jurisdiction endpoint |
+| `DATABASE_BACKUP_R2_BUCKET` | Dedicated database-backup bucket | No | B | Yes | Not a live evidence bucket |
+| `DATABASE_BACKUP_R2_ACCESS_KEY_ID` | Backup-only object credential | Yes | B | Yes | Absent from web/worker; object scope only |
+| `DATABASE_BACKUP_R2_SECRET_ACCESS_KEY` | Backup-only object secret | Yes | B | Yes | Sealed; absent from other services |
+| `DATABASE_BACKUP_R2_REGION` | Backup S3 region | No | B | No | `auto` |
+| `DATABASE_BACKUP_R2_FORCE_PATH_STYLE` | Backup addressing mode | No | B | No | `false` |
+| `BACKUP_RETENTION_DAYS` | Controlled retention age | No | B | Policy decision | Start `30`; cleanup dry-runs unless `--apply` |
 | `BACKUP_ENCRYPTION_PASSPHRASE` | Encrypts logical dumps | Yes | B | Yes | Escrowed; isolated restore succeeds |
 | `POSTGRES_BIN_DIR` | Optional path to matching pg tools | No | B | Platform-specific | `pg_dump --version` compatible with Neon |
 | `RESTORE_DATABASE_URL` | Isolated restore target, ad hoc only | Yes | B | Every drill | Refuses live URLs; restored `SELECT 1` succeeds |
-| `RESTORE_BACKUP_FILE` | Selected encrypted dump, ad hoc only | Sensitive | B | Every drill | Checksum and archive validation pass |
+| `RESTORE_BACKUP_KEY` | Exact private object key, ad hoc only | Sensitive | B | Every drill | Download and checksum verification pass |
+| `RESTORE_BACKUP_FILE` | Optional already-retrieved encrypted dump | Sensitive | B | Every drill | Checksum and archive validation pass |
+| `RESTORE_CONFIRM_ISOLATED_DATABASE` | Explicit restore safety acknowledgement | No | B | Every drill | Must equal `true`; target must differ from all source URLs |
 | `ERROR_MONITORING_ENDPOINT` | Optional privacy-minimised receiver | Sensitive config | W E M B | Yes | HTTPS; synthetic safe error appears |
 | `ERROR_MONITORING_TOKEN` | Optional monitoring credential | Yes | W E M B | Yes | Sealed; rejected token does not break app |
 | `RELEASE_SHA` | Release identifier | No | W E M | Every deploy | Set from `RAILWAY_GIT_COMMIT_SHA`; logs show commit |
@@ -188,8 +199,6 @@ Service codes: **W** web, **E** email worker, **M** maintenance, **G** migration
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | Graceful drain window | No | W E | No | `30`; SIGTERM completes in-flight work |
 | `PORT` | Railway-assigned listener port | No | W | Provider-managed | Do not override; liveness returns 200 |
 | `RAILWAY_GIT_COMMIT_SHA` | Railway-provided release commit | No | W E M | Every deploy | Matches deployed checkpoint |
-
-\* The current webhook verifier constructs the Resend SDK with the API key as well as the webhook secret. Reassess whether the API key can be removed from webhook-only verification during the least-privilege change.
 
 Local-only values `PRIVATE_MEDIA_ROOT`, `DEV_MAIL_ROOT` and `EMAIL_DRIVER=development` must not exist in staging. Operator-only `ADMIN_EMAIL`, `ADMIN_NAME` and `ADMIN_PASSWORD` are supplied transiently to `npm run admin:create` and removed immediately; the password must never be stored as a persistent service variable. Test-only `BROWSER_FIXTURE_PATH`, `TEST_DATABASE_ADMIN_URL`, `NEXT_DIST_DIR` and restore inputs are not normal staging service configuration.
 
@@ -234,16 +243,15 @@ Use a unique synthetic case prefix and synthetic images containing an obvious `S
 
 ## 9. Recommended activation order
 
-1. Approve the three blocker fixes and the maximum monthly staging budget.
-2. Implement and locally test the staging gateway and service-specific environment validation; add their regression/browser tests.
-3. Resolve the durable logical-backup job/tooling design and test it locally.
-4. Create the isolated Neon project, choose region after measurement, create roles, and record pooled/direct URLs in the approved secrets manager.
-5. Create private EU R2 live and backup buckets plus separate least-privilege tokens; keep public access disabled.
-6. Create Resend staging configuration. Use official test addresses first; request separate approval before DNS records for a controlled transactional subdomain.
-7. Create Railway staging web/worker/jobs with manual deployment, access barrier variables, resource/cost limits and no master auto-deploy.
-8. Run the migration job exactly once, then deploy the web behind the tested barrier and the private worker.
-9. Execute all 21 acceptance steps with synthetic data and record results.
-10. Do not create or expose a production environment. Review the staging evidence, provider invoices, legal/retention decisions and remaining Phase 4A launch criteria first.
+1. Approve the maximum monthly staging budget and provider account/resource activation; code blockers are resolved locally.
+2. Create the isolated Neon project, choose region after measurement, create roles, and record pooled/direct URLs in the approved secrets manager.
+3. Create private EU R2 live, evidence-backup and database-backup buckets plus separate least-privilege tokens; keep public access disabled.
+4. Create Resend staging configuration. Use official test addresses first; request separate approval before DNS records for a controlled transactional subdomain.
+5. Create Railway staging web/worker/jobs with manual deployment, gateway variables, resource/cost limits and no master auto-deploy. Use `Dockerfile.backup` only for the database-backup job.
+6. Verify anonymous access is blocked before sharing the Railway hostname.
+7. Run the migration job exactly once, then activate the private worker and scheduled dry-run maintenance.
+8. Execute all 21 acceptance steps with synthetic data and record results.
+9. Do not create or expose a production environment. Review the staging evidence, provider invoices, legal/retention decisions and remaining Phase 4A launch criteria first.
 
 ## 10. Provider references
 
