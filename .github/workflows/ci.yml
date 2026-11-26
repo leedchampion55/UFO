@@ -78,3 +78,88 @@ jobs:
         env:
           TEST_DATABASE_ADMIN_URL: postgresql://ufo_ci@127.0.0.1:5432/postgres
         run: npm run test:browser
+
+  backup-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_USER: ufo_backup
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ufo_backup -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BACKUP_IMAGE: what-the-ufo-backup:ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build private backup job image
+        run: docker build --tag "$BACKUP_IMAGE" --file Dockerfile.backup .
+      - name: Verify runtime, PostgreSQL tools and image command
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node "$BACKUP_IMAGE" --version | grep -E '^v22\.'
+          docker run --rm --entrypoint pg_dump "$BACKUP_IMAGE" --version | grep -E 'PostgreSQL\) 16\.'
+          docker run --rm --entrypoint pg_restore "$BACKUP_IMAGE" --version | grep -E 'PostgreSQL\) 16\.'
+          docker run --rm --entrypoint openssl "$BACKUP_IMAGE" version
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' "$BACKUP_IMAGE")" = '["npm","run","ops:backup-db"]'
+          image_environment="$(docker image inspect --format '{{json .Config.Env}}' "$BACKUP_IMAGE")"
+          if grep -Eq 'DATABASE_URL|PASSPHRASE|AWS_SECRET|RESEND_API_KEY|BETTER_AUTH_SECRET' <<<"$image_environment"; then
+            echo 'Backup image contains an application credential variable.' >&2
+            exit 1
+          fi
+      - name: Generate ephemeral backup encryption material
+        run: |
+          passphrase="$(openssl rand -hex 32)"
+          echo "::add-mask::$passphrase"
+          echo "BACKUP_PASSPHRASE=$passphrase" >> "$GITHUB_ENV"
+      - name: Exercise encrypted backup and isolated restore
+        run: |
+          set -euo pipefail
+          backup_root="$PWD/.data/ci-docker-backups"
+          mkdir -p "$backup_root"
+
+          docker run --rm --network host --entrypoint psql "$BACKUP_IMAGE" \
+            postgresql://ufo_backup@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE ufo_backup_source' \
+            -c 'CREATE DATABASE ufo_backup_restore'
+          docker run --rm --network host --entrypoint psql "$BACKUP_IMAGE" \
+            postgresql://ufo_backup@127.0.0.1:5432/ufo_backup_source -v ON_ERROR_STOP=1 \
+            -c 'CREATE TABLE backup_probe (id integer PRIMARY KEY, marker text NOT NULL)' \
+            -c "INSERT INTO backup_probe VALUES (1, 'synthetic-container-backup')"
+
+          docker run --rm --network host \
+            -e BACKUP_DATABASE_URL=postgresql://ufo_backup@127.0.0.1:5432/ufo_backup_source \
+            -e BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_PASSPHRASE" \
+            -e DATABASE_BACKUP_DRIVER=local \
+            -e DATABASE_BACKUP_ROOT=/backups \
+            -v "$backup_root:/backups" \
+            "$BACKUP_IMAGE"
+
+          backup_key="$(find "$backup_root/database" -maxdepth 1 -type f -name '*.dump.enc' -printf 'database/%f\n')"
+          test -n "$backup_key"
+          test -f "$backup_root/${backup_key}.sha256"
+          test -z "$(find "$backup_root" -type f -name '*.dump' -print -quit)"
+
+          docker run --rm --network host --entrypoint bash \
+            -e RESTORE_DATABASE_URL=postgresql://ufo_backup@127.0.0.1:5432/ufo_backup_restore \
+            -e RESTORE_CONFIRM_ISOLATED_DATABASE=true \
+            -e RESTORE_BACKUP_KEY="$backup_key" \
+            -e BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_PASSPHRASE" \
+            -e DATABASE_BACKUP_DRIVER=local \
+            -e DATABASE_BACKUP_ROOT=/backups \
+            -v "$backup_root:/backups:ro" \
+            "$BACKUP_IMAGE" scripts/restore-postgres.sh
+
+          restored_marker="$(docker run --rm --network host --entrypoint psql "$BACKUP_IMAGE" \
+            postgresql://ufo_backup@127.0.0.1:5432/ufo_backup_restore -Atqc \
+            'SELECT marker FROM backup_probe WHERE id = 1')"
+          test "$restored_marker" = 'synthetic-container-backup'

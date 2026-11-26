@@ -198,7 +198,7 @@ npm run ops:test-backup
 npm run test:browser
 ```
 
-GitHub Actions repeats installation, isolated PostgreSQL migration, repository security checks, lint, typecheck, database-backed tests, build, production audit and headless browser journeys. The browser runner creates and drops a uniquely named disposable database and uses local mail/media adapters. Tests never call real Resend or R2 accounts.
+GitHub Actions repeats installation, isolated PostgreSQL migration, repository security checks, lint, typecheck, database-backed tests, build, production audit and headless browser journeys. A separate job builds the private backup image, verifies its Node.js 22/PostgreSQL 16 toolchain, and exercises encrypted backup and isolated restoration with synthetic data. The browser runner creates and drops a uniquely named disposable database and uses local mail/media adapters. Tests never call real Resend or R2 accounts.
 
 The nonce-based Content Security Policy is generated in `proxy.ts`. The root layout is dynamic so Next.js can attach the nonce to framework assets. Global response headers also provide `nosniff`, strict referrer policy, Permissions Policy, clickjacking protection and same-origin opener isolation. HSTS is emitted only when a production build is configured with an HTTPS canonical origin, so local HTTP development is unaffected.
 

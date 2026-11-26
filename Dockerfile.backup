@@ -4,6 +4,8 @@ FROM postgres:16-bookworm
 COPY --from=node-runtime /usr/local/ /usr/local/
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY prisma7.config.ts ./
+COPY prisma ./prisma
 RUN npm ci
 COPY . .
 RUN node --version && pg_dump --version && openssl version

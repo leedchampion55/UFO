@@ -109,7 +109,7 @@ Run the full CI and browser suite, provider smoke messages, R2 publish/unpublish
 
 ## CI and smoke tests
 
-`.github/workflows/ci.yml` grants read-only repository permission and uses pinned GitHub Actions. It starts isolated PostgreSQL 16, runs exact `npm ci`, migrations, tracked-file credential/runtime checks, lint, typecheck, database tests, production build, high-severity production audit and Chromium smoke tests. It has no production secrets or deployment step.
+`.github/workflows/ci.yml` grants read-only repository permission and uses pinned GitHub Actions. It starts isolated PostgreSQL 16, runs exact `npm ci`, migrations, tracked-file credential/runtime checks, lint, typecheck, database tests, production build, high-severity production audit and Chromium smoke tests. A separate job builds `Dockerfile.backup` without publishing it, verifies Node.js 22 and PostgreSQL 16 tools, creates an encrypted logical backup of synthetic data, and restores it into a different disposable database. It has no production secrets or deployment step.
 
 `npm run test:browser` creates a unique disposable database and ignored mail/media directories, migrates/seeds them, runs desktop (1440 px) and mobile (390 px) Chromium journeys, then drops the database. Tests cover the home artwork/navigation, archive, anonymous evidence submission, administrator MFA, moderation/publication, protected-media access and unpublish revocation, member verification and a Mothership discussion. Never point `TEST_DATABASE_ADMIN_URL` or the browser suite at production.
 
